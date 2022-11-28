@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm, trange
-
+from torch.utils.data import random_split
 import matplotlib.pyplot as plt
 
 from run_nerf_helpers import *
@@ -22,6 +22,7 @@ from load_LINEMOD import load_LINEMOD_data
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 np.random.seed(0)
 DEBUG = False
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 def batchify(fn, chunk):
@@ -34,7 +35,7 @@ def batchify(fn, chunk):
     return ret
 
 
-def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
+def run_network(inputs, viewdirs, embedded_cam, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'.
     """
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
@@ -44,19 +45,22 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
         input_dirs = viewdirs[:,None].expand(inputs.shape)
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
-        embedded = torch.cat([embedded, embedded_dirs], -1)
+        embedded = torch.cat(
+            [embedded, embedded_dirs, embedded_cam.squeeze(0).expand(embedded_dirs.shape[0], embedded_cam.shape[2])],
+            -1)
+        # embedded = torch.cat([embedded, embedded_dirs], -1)
 
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = torch.reshape(outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]])
     return outputs
 
 
-def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
+def batchify_rays(rays_flat, chunk=1024*32,use_viewdirs=False, **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
     """
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], **kwargs)
+        ret = render_rays(rays_flat[i:i+chunk], use_viewdirs,**kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -123,7 +127,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
         rays = torch.cat([rays, viewdirs], -1)
 
     # Render and reshape
-    all_ret = batchify_rays(rays, chunk, **kwargs)
+    all_ret = batchify_rays(rays, chunk, use_viewdirs, **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)
@@ -133,8 +137,60 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     ret_dict = {k : all_ret[k] for k in all_ret if k not in k_extract}
     return ret_list + [ret_dict]
 
+def compute_samples_per_subset(sample_count, validate_on_at_least_n_samples):
+    validate_on_at_least_n_samples = min(validate_on_at_least_n_samples, sample_count)
+    number_subsets = int(sample_count / validate_on_at_least_n_samples)
+    samples_per_subset = int(sample_count / number_subsets)
+    extra_sample_subsets = sample_count % samples_per_subset
+    normal_subsets = number_subsets - extra_sample_subsets
+    return samples_per_subset, normal_subsets, extra_sample_subsets
 
-def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
+def create_random_subsets(dataset, validate_on_at_least_n_samples, device='cpu'):
+    samples_per_subset, normal_subsets, extra_sample_subsets = compute_samples_per_subset(len(dataset), validate_on_at_least_n_samples)
+    subsets = random_split(dataset, (samples_per_subset,) * normal_subsets + (samples_per_subset + 1,) * extra_sample_subsets, \
+        torch.Generator(device=device))
+    return subsets
+
+def optimize_camera_embedding(image, pose, H, W, intrinsic, args, render_kwargs_test):
+    render_kwargs_test["embedded_cam"] = torch.zeros(args.input_ch_cam, requires_grad=True).to(device)
+    optimizer = torch.optim.Adam(params=(render_kwargs_test["embedded_cam"],), lr=5e-1)
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', factor=0.5, patience=3, verbose=True)
+    half_W = W
+    print(" - Optimize camera embedding")
+    max_psnr = 0
+    best_embedded_cam = torch.zeros(args.input_ch_cam).to(device)
+    # make batches
+    coords = torch.stack(torch.meshgrid(torch.linspace(0, H - 1, H), torch.linspace(0, half_W - 1, half_W), indexing='ij'), -1)  # (H, W, 2)
+    coords = torch.reshape(coords, [-1, 2]).long()
+    assert(coords[:, 1].max() < half_W)
+    batches = create_random_subsets(range(len(coords)), 2 * args.N_rand, device=device)
+    # make rays
+    rays_o, rays_d = get_rays(H, half_W, intrinsic, pose)  # (H, W, 3), (H, W, 3)
+    start_time = time.time()
+    for i in range(100):
+        sum_img_loss = torch.zeros(1)
+        optimizer.zero_grad()
+        for b in batches:
+            curr_coords = coords[b]
+            curr_rays_o = rays_o[curr_coords[:, 0], curr_coords[:, 1]]  # (N_rand, 3)
+            curr_rays_d = rays_d[curr_coords[:, 0], curr_coords[:, 1]]  # (N_rand, 3)
+            target_s = image[curr_coords[:, 0], curr_coords[:, 1]]
+            batch_rays = torch.stack([curr_rays_o, curr_rays_d], 0)
+            rgb, _, _, _ = render(H, half_W, None, chunk=args.chunk, rays=batch_rays, verbose=i < 10, **render_kwargs_test)
+            img_loss = img2mse(rgb, target_s)
+            img_loss.backward()
+            sum_img_loss += img_loss
+        optimizer.step()
+        psnr = mse2psnr(sum_img_loss / len(batches))
+        lr_scheduler.step(psnr)
+        if psnr > max_psnr:
+            max_psnr = psnr
+            best_embedded_cam = render_kwargs_test["embedded_cam"].detach().clone()
+            print("Step {}: PSNR: {} ({:.2f}min)".format(i, psnr, (time.time() - start_time) / 60))
+    render_kwargs_test["embedded_cam"] = best_embedded_cam
+
+def render_path(args, indices,render_poses, hwf, K, images,poses,chunk, render_kwargs_test, embedcam_fn=None, gt_imgs=None, savedir=None, render_factor=0
+                , with_test_time_optimization=False):
 
     H, W, focal = hwf
 
@@ -149,9 +205,67 @@ def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedi
 
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
+        img_idx = indices[i]
+        target = images[img_idx]
+        pose = poses[img_idx, :3, :4]
+        if args.input_ch_cam > 0:
+            if embedcam_fn is None:
+                # use zero embedding at test time or optimize for the latent code
+                render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
+                if with_test_time_optimization:
+                    optimize_camera_embedding(target, pose, H, W, K, args, render_kwargs_test)
+                    result_dir = os.path.join(args.ckpt_dir, args.expname, "test_latent_codes_" + args.scene_id)
+                    os.makedirs(result_dir, exist_ok=True)
+                    np.savetxt(os.path.join(result_dir, str(img_idx) + ".txt"),
+                               render_kwargs_test["embedded_cam"].cpu().numpy())
+            else:
+                render_kwargs_test["embedded_cam"] = embedcam_fn(torch.tensor(img_idx, device=device)).reshape(1,1,4)
         print(i, time.time() - t)
         t = time.time()
-        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs)
+        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs_test)
+        rgbs.append(rgb.cpu().numpy())
+        disps.append(disp.cpu().numpy())
+        if i==0:
+            print(rgb.shape, disp.shape)
+
+        """
+        if gt_imgs is not None and render_factor==0:
+            p = -10. * np.log10(np.mean(np.square(rgb.cpu().numpy() - gt_imgs[i])))
+            print(p)
+        """
+
+        if savedir is not None:
+            rgb8 = to8b(rgbs[-1])
+            filename = os.path.join(savedir, '{:03d}.png'.format(i))
+            imageio.imwrite(filename, rgb8)
+
+
+    rgbs = np.stack(rgbs, 0)
+    disps = np.stack(disps, 0)
+
+    return rgbs, disps
+def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_fn=None, gt_imgs=None, savedir=None, render_factor=0
+                , with_test_time_optimization=False):
+
+    H, W, focal = hwf
+
+    if render_factor!=0:
+        # Render downsampled for speed
+        H = H//render_factor
+        W = W//render_factor
+        focal = focal/render_factor
+
+    rgbs = []
+    disps = []
+
+    t = time.time()
+    for i, c2w in enumerate(tqdm(render_poses)):
+        with torch.no_grad():
+            if args.input_ch_cam > 0:
+                render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
+        print(i, time.time() - t)
+        t = time.time()
+        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs_test)
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
         if i==0:
@@ -188,17 +302,17 @@ def create_nerf(args):
     skips = [4]
     model = NeRF(D=args.netdepth, W=args.netwidth,
                  input_ch=input_ch, output_ch=output_ch, skips=skips,
-                 input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
+                 input_ch_views=input_ch_views, input_ch_cam=args.input_ch_cam,use_viewdirs=args.use_viewdirs).to(device)
     grad_vars = list(model.parameters())
 
     model_fine = None
     if args.N_importance > 0:
         model_fine = NeRF(D=args.netdepth_fine, W=args.netwidth_fine,
                           input_ch=input_ch, output_ch=output_ch, skips=skips,
-                          input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
+                          input_ch_views=input_ch_views, input_ch_cam=args.input_ch_cam, use_viewdirs=args.use_viewdirs).to(device)
         grad_vars += list(model_fine.parameters())
 
-    network_query_fn = lambda inputs, viewdirs, network_fn : run_network(inputs, viewdirs, network_fn,
+    network_query_fn = lambda inputs, viewdirs, embedded_cam,network_fn : run_network(inputs, viewdirs, embedded_cam, network_fn,
                                                                 embed_fn=embed_fn,
                                                                 embeddirs_fn=embeddirs_fn,
                                                                 netchunk=args.netchunk)
@@ -233,9 +347,10 @@ def create_nerf(args):
             model_fine.load_state_dict(ckpt['network_fine_state_dict'])
 
     ##########################
-
+    embedded_cam = torch.tensor((), device=device)
     render_kwargs_train = {
         'network_query_fn' : network_query_fn,
+        'embedded_cam': embedded_cam,
         'perturb' : args.perturb,
         'N_importance' : args.N_importance,
         'network_fine' : model_fine,
@@ -306,9 +421,11 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
 
 
 def render_rays(ray_batch,
+                use_viewdirs,
                 network_fn,
                 network_query_fn,
                 N_samples,
+                embedded_cam=None,
                 retraw=False,
                 lindisp=False,
                 perturb=0.,
@@ -350,7 +467,10 @@ def render_rays(ray_batch,
     """
     N_rays = ray_batch.shape[0]
     rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each
-    viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
+    viewdirs = None
+    if use_viewdirs:
+        viewdirs = ray_batch[:,8:11]
+    #viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
     near, far = bounds[...,0], bounds[...,1] # [-1,1]
 
@@ -382,7 +502,7 @@ def render_rays(ray_batch,
 
 
 #     raw = run_network(pts)
-    raw = network_query_fn(pts, viewdirs, network_fn)
+    raw = network_query_fn(pts, viewdirs,embedded_cam, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
 
     if N_importance > 0:
@@ -398,7 +518,7 @@ def render_rays(ray_batch,
 
         run_fn = network_fn if network_fine is None else network_fine
 #         raw = run_network(pts, fn=run_fn)
-        raw = network_query_fn(pts, viewdirs, run_fn)
+        raw = network_query_fn(pts, viewdirs,embedded_cam, run_fn)
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
 
@@ -528,6 +648,9 @@ def config_parser():
     parser.add_argument("--i_video",   type=int, default=50000, 
                         help='frequency of render_poses video saving')
 
+    parser.add_argument("--input_ch_cam", type=int, default=4,
+                        help='number of channels for camera index embedding')
+
     return parser
 
 
@@ -551,7 +674,19 @@ def train():
         if args.llffhold > 0:
             print('Auto LLFF holdout,', args.llffhold)
             i_test = np.arange(images.shape[0])[::args.llffhold]
+        else:
+            i_train = []
+            exp_num = 5
+            for i in range(0, images.shape[0] // (exp_num * 2) + 1, 2):
+                step = i * exp_num * 2
+                i_train.append(np.random.choice([0 + step, 2 + step, 4 + step], 1, replace=False))
+                # i_train.append(np.random.choice([0+step, 2+step, 4+step], 1, replace=False))
+            i_train = np.sort(np.array(i_train).reshape([-1]))
+            i_test = np.array([i for i in np.arange(int(images.shape[0])) if (i not in i_train)])
 
+            i_val = i_test
+            i_train = np.array([i for i in np.arange(int(images.shape[0])) if (i not in i_test and i not in i_val)])
+            img_list = i_train[::1]
         i_val = i_test
         i_train = np.array([i for i in np.arange(int(images.shape[0])) if
                         (i not in i_test and i not in i_val)])
@@ -640,6 +775,11 @@ def train():
     render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
     global_step = start
 
+    # create camera embedding function
+    embedcam_fn = None
+    if args.input_ch_cam > 0:
+        embedcam_fn = torch.nn.Embedding(len(i_train), args.input_ch_cam)
+
     bds_dict = {
         'near' : near,
         'far' : far,
@@ -698,7 +838,7 @@ def train():
         rays_rgb = torch.Tensor(rays_rgb).to(device)
 
 
-    N_iters = 200000 + 1
+    N_iters = 100000 + 1
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)
@@ -755,6 +895,9 @@ def train():
                 rays_d = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 batch_rays = torch.stack([rays_o, rays_d], 0)
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
+        if args.input_ch_cam > 0:
+            tt= np.where(i_train == img_i)
+            render_kwargs_train['embedded_cam'] = embedcam_fn(torch.tensor(tt, device=device))
 
         #####  Core optimization loop  #####
         rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays,
@@ -802,7 +945,7 @@ def train():
         if i%args.i_video==0 and i > 0:
             # Turn on testing mode
             with torch.no_grad():
-                rgbs, disps = render_path(render_poses, hwf, K, args.chunk, render_kwargs_test)
+                rgbs, disps = render_video(args,render_poses, hwf, K, args.chunk, render_kwargs_test)
             print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
@@ -820,54 +963,15 @@ def train():
             os.makedirs(testsavedir, exist_ok=True)
             print('test poses shape', poses[i_test].shape)
             with torch.no_grad():
-                render_path(torch.Tensor(poses[i_test]).to(device), hwf, K, args.chunk, render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
+                render_path(args,i_test,torch.Tensor(poses[i_test]).to(device), hwf, K, images, poses,args.chunk,
+                            render_kwargs_test, embedcam_fn=embedcam_fn, gt_imgs=images[i_test], savedir=testsavedir)
             print('Saved test set')
 
 
     
         if i%args.i_print==0:
             tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}")
-        """
-            print(expname, i, psnr.numpy(), loss.numpy(), global_step.numpy())
-            print('iter time {:.05f}'.format(dt))
 
-            with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
-                tf.contrib.summary.scalar('loss', loss)
-                tf.contrib.summary.scalar('psnr', psnr)
-                tf.contrib.summary.histogram('tran', trans)
-                if args.N_importance > 0:
-                    tf.contrib.summary.scalar('psnr0', psnr0)
-
-
-            if i%args.i_img==0:
-
-                # Log a rendered validation view to Tensorboard
-                img_i=np.random.choice(i_val)
-                target = images[img_i]
-                pose = poses[img_i, :3,:4]
-                with torch.no_grad():
-                    rgb, disp, acc, extras = render(H, W, focal, chunk=args.chunk, c2w=pose,
-                                                        **render_kwargs_test)
-
-                psnr = mse2psnr(img2mse(rgb, target))
-
-                with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-
-                    tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
-                    tf.contrib.summary.image('disp', disp[tf.newaxis,...,tf.newaxis])
-                    tf.contrib.summary.image('acc', acc[tf.newaxis,...,tf.newaxis])
-
-                    tf.contrib.summary.scalar('psnr_holdout', psnr)
-                    tf.contrib.summary.image('rgb_holdout', target[tf.newaxis])
-
-
-                if args.N_importance > 0:
-
-                    with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-                        tf.contrib.summary.image('rgb0', to8b(extras['rgb0'])[tf.newaxis])
-                        tf.contrib.summary.image('disp0', extras['disp0'][tf.newaxis,...,tf.newaxis])
-                        tf.contrib.summary.image('z_std', extras['z_std'][tf.newaxis,...,tf.newaxis])
-        """
 
         global_step += 1
 

@@ -65,7 +65,7 @@ def get_embedder(multires, i=0):
 
 # Model
 class NeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips=[4], use_viewdirs=False):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3,input_ch_cam=0, output_ch=4, skips=[4], use_viewdirs=False):
         """ 
         """
         super(NeRF, self).__init__()
@@ -73,6 +73,7 @@ class NeRF(nn.Module):
         self.W = W
         self.input_ch = input_ch
         self.input_ch_views = input_ch_views
+        self.input_ch_cam = input_ch_cam
         self.skips = skips
         self.use_viewdirs = use_viewdirs
         
@@ -80,7 +81,7 @@ class NeRF(nn.Module):
             [nn.Linear(input_ch, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
         
         ### Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
-        self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W//2)])
+        self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + input_ch_cam + W, W//2)])
 
         ### Implementation according to the paper
         # self.views_linears = nn.ModuleList(
@@ -94,7 +95,7 @@ class NeRF(nn.Module):
             self.output_linear = nn.Linear(W, output_ch)
 
     def forward(self, x):
-        input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
+        input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views + self.input_ch_cam], dim=-1)
         h = input_pts
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)

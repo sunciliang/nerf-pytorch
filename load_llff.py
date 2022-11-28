@@ -284,7 +284,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         shrink_factor = .8
         zdelta = close_depth * .2
         tt = poses[:,:3,3] # ptstocam(poses[:3,3,:].T, c2w).T
-        rads = np.percentile(np.abs(tt), 90, 0)
+        rads = np.percentile(np.abs(tt), 30, 0)
         c2w_path = c2w
         N_views = 120
         N_rots = 2
