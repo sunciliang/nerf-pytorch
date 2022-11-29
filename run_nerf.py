@@ -219,7 +219,7 @@ def render_path(args, indices,render_poses, hwf, K, images,poses,chunk, render_k
                     np.savetxt(os.path.join(result_dir, str(img_idx) + ".txt"),
                                render_kwargs_test["embedded_cam"].cpu().numpy())
             else:
-                render_kwargs_test["embedded_cam"] = embedcam_fn(torch.tensor(img_idx, device=device)).reshape(1,1,4)
+                render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
         print(i, time.time() - t)
         t = time.time()
         rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs_test)
@@ -262,7 +262,10 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
     for i, c2w in enumerate(tqdm(render_poses)):
         with torch.no_grad():
             if args.input_ch_cam > 0:
-                render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
+                if embedcam_fn is not None:
+                    render_kwargs_test["embedded_cam"] = embedcam_fn(torch.tensor(6, device=device)).reshape(1,1,4)
+                else:
+                    render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
         print(i, time.time() - t)
         t = time.time()
         rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs_test)
@@ -943,9 +946,11 @@ def train():
             print('Saved checkpoints at', path)
 
         if i%args.i_video==0 and i > 0:
+            videosavedir = os.path.join(basedir, expname, 'videoset_{:06d}'.format(i))
+            os.makedirs(videosavedir, exist_ok=True)
             # Turn on testing mode
             with torch.no_grad():
-                rgbs, disps = render_video(args,render_poses, hwf, K, args.chunk, render_kwargs_test)
+                rgbs, disps = render_video(args,render_poses, hwf, K, args.chunk, render_kwargs_test,embedcam_fn=None,savedir=videosavedir)#embedcam_fn)
             print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
