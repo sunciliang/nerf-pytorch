@@ -1,5 +1,6 @@
 import numpy as np
 import os, imageio
+import cv2
 
 
 ########## Slightly modified version of LLFF data loading code 
@@ -112,7 +113,38 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
             return imageio.imread(f)
         
     imgs = imgs = [imread(f)[...,:3]/255. for f in imgfiles]
-    imgs = np.stack(imgs, -1)  
+    imgs_new = []
+    for img in imgs:
+        # 三色通道的平均值
+        B = img[..., 0].mean()
+        G = img[..., 1].mean()
+        R = img[..., 2].mean()
+
+        # 显示亮度
+        brightness = 0.299 * R + 0.587 * G + 0.114 * B
+        while brightness > 0.55 :
+            img1 = img - 1/2*brightness
+            B = img1[..., 0].mean()
+            G = img1[..., 1].mean()
+            R = img1[..., 2].mean()
+            brightness = 0.299 * R + 0.587 * G + 0.114 * B
+            print(brightness)
+        while brightness < 0.4 :
+            img1 = img1 + 1 / 4 * brightness
+            B = img1[..., 0].mean()
+            G = img1[..., 1].mean()
+            R = img1[..., 2].mean()
+            brightness = 0.299 * R + 0.587 * G + 0.114 * B
+            print(brightness)
+        # tmp = np.hstack((img, img1))
+        # cv2.imshow('image', tmp)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+        # print("dd")
+        imgs_new.append(img1)
+        print("last",brightness)
+    # imgs = np.stack(imgs, -1)
+    imgs = np.stack(imgs_new, -1)
     
     print('Loaded image data', imgs.shape, poses[:,-1,0])
     return poses, bds, imgs
