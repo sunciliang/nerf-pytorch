@@ -1,4 +1,4 @@
-expname = luckycat_NOL_before9v_withPE
+expname = luckycat_L_before9v
 basedir = ./logs
 datadir = ./data/luckycat
 dataset_type = llff

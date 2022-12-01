@@ -1,7 +1,7 @@
 import numpy as np
 import os, imageio
 import cv2
-
+from run_nerf_helpers import *
 
 ########## Slightly modified version of LLFF data loading code 
 ##########  see https://github.com/Fyusion/LLFF for original
@@ -56,8 +56,50 @@ def _minify(basedir, factors=[], resolutions=[]):
             check_output('rm {}/*.{}'.format(imgdir, ext), shell=True)
             print('Removed duplicates')
         print('Done')
-            
-        
+
+def compute_bright(img):
+    # 三色通道的平均值
+    temp_img = img.reshape(-1,3)
+    R = temp_img[..., 0]
+    G = temp_img[..., 1]
+    B = temp_img[..., 2]
+
+    # 显示亮度
+    brightness = 0.299 * R + 0.587 * G + 0.114 * B
+    b_mean = brightness.mean()
+    # print("init", b_mean)
+    while b_mean > 0.55:
+        img = img - 1 / 2 * b_mean
+        temp_img = img.reshape(-1, 3)
+        R = temp_img[..., 0]
+        G = temp_img[..., 1]
+        B = temp_img[..., 2]
+        brightness = 0.299 * R + 0.587 * G + 0.114 * B
+        b_mean = brightness.mean()
+        # print(brightness)
+    while b_mean < 0.4:
+        img = img + 1 / 4 * b_mean
+        temp_img = img.reshape(-1, 3)
+        R = temp_img[..., 0]
+        G = temp_img[..., 1]
+        B = temp_img[..., 2]
+        brightness = 0.299 * R + 0.587 * G + 0.114 * B
+        b_mean = brightness.mean()
+        # print(brightness)
+    # print("last", b_mean)
+    return img
+
+def compute_Saturation(img,mask_t):
+    temp_img = img.reshape(-1,3)
+    maxc = np.max(temp_img, axis = 1)
+    minc = np.min(temp_img, axis = 1)
+    Saturation = (maxc - minc)
+    print(Saturation.min(),Saturation.max())
+    Saturation = Saturation.reshape(img.shape[0],img.shape[1])
+    mask_t = np.where(Saturation < 0.05,True,False)
+    return mask_t
+
+
         
         
 def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
@@ -114,45 +156,42 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
         
     imgs = imgs = [imread(f)[...,:3]/255. for f in imgfiles]
     imgs_new = []
-    for img in imgs:
-        # 三色通道的平均值
-        B = img[..., 0].mean()
-        G = img[..., 1].mean()
-        R = img[..., 2].mean()
+    mask_b = []
+    savedir = os.path.join(basedir, 'bright')
+    folder = os.path.exists(savedir)
+    save = False
+    if not folder:  # 判断是否存在文件夹如果不存在则创建为文件夹
+        os.makedirs(savedir)
+        save = True
 
-        # 显示亮度
-        brightness = 0.299 * R + 0.587 * G + 0.114 * B
-        while brightness > 0.55 :
-            img1 = img - 1/2*brightness
-            B = img1[..., 0].mean()
-            G = img1[..., 1].mean()
-            R = img1[..., 2].mean()
-            brightness = 0.299 * R + 0.587 * G + 0.114 * B
-            print(brightness)
-        while brightness < 0.4 :
-            img1 = img1 + 1 / 4 * brightness
-            B = img1[..., 0].mean()
-            G = img1[..., 1].mean()
-            R = img1[..., 2].mean()
-            brightness = 0.299 * R + 0.587 * G + 0.114 * B
-            print(brightness)
+    for i, img in enumerate(imgs):
+        mask_t = np.zeros_like(img)
+        img1 = compute_bright(img)
+        mask_t = compute_Saturation(img1, mask_t)
+
         # tmp = np.hstack((img, img1))
         # cv2.imshow('image', tmp)
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
-        # print("dd")
+        # # print("dd")
         imgs_new.append(img1)
-        print("last",brightness)
+        mask_b.append(mask_t)
+
+        rgb8 = to8b(img1)
+        # plt.figure("Image")
+        # plt.imshow(rgb8)
+        # plt.title('image')
+        # plt.show()
+        if save:
+            filename = os.path.join(savedir, '{:03d}.png'.format(i))
+            imageio.imwrite(filename, rgb8)
     # imgs = np.stack(imgs, -1)
     imgs = np.stack(imgs_new, -1)
-    
-    print('Loaded image data', imgs.shape, poses[:,-1,0])
-    return poses, bds, imgs
+    masks_b = np.stack(mask_b)
 
-    
-            
-            
-    
+    print('Loaded image data', imgs.shape, poses[:, -1, 0])
+    return poses, bds, imgs, masks_b
+
 
 def normalize(x):
     return x / np.linalg.norm(x)
@@ -275,7 +314,7 @@ def spherify_poses(poses, bds):
 def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=False, path_zflat=False):
     
 
-    poses, bds, imgs = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
+    poses, bds, imgs, masks_b = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
     print('Loaded', basedir, bds.min(), bds.max())
     
     # Correct rotation matrix ordering and move variable dim to axis 0
@@ -345,7 +384,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     images = images.astype(np.float32)
     poses = poses.astype(np.float32)
 
-    return images, poses, bds, render_poses, i_test
+    return images, poses, bds, render_poses, i_test, masks_b
 
 
 
