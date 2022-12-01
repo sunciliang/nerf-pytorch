@@ -653,6 +653,8 @@ def config_parser():
 
     parser.add_argument("--input_ch_cam", type=int, default=4,
                         help='number of channels for camera index embedding')
+    parser.add_argument("--maskb", action='store_true',
+                        help='use mask b')
 
     return parser
 
@@ -874,6 +876,7 @@ def train():
             target = images[img_i]
             target = torch.Tensor(target).to(device)
             pose = poses[img_i, :3,:4]
+            mask_b = masks_b[img_i]
 
             if N_rand is not None:
                 rays_o, rays_d = get_rays(H, W, K, torch.Tensor(pose))  # (H, W, 3), (H, W, 3)
@@ -898,6 +901,8 @@ def train():
                 rays_d = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 batch_rays = torch.stack([rays_o, rays_d], 0)
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
+                target_maskb = mask_b[select_coords[:, 0].cpu(), select_coords[:, 1].cpu()]
+
         if args.input_ch_cam > 0:
             tt= np.where(i_train == img_i)
             render_kwargs_train['embedded_cam'] = embedcam_fn(torch.tensor(tt, device=device))
@@ -908,15 +913,36 @@ def train():
                                                 **render_kwargs_train)
 
         optimizer.zero_grad()
-        img_loss = img2mse(rgb, target_s)
-        trans = extras['raw'][...,-1]
-        loss = img_loss
-        psnr = mse2psnr(img_loss)
+        if args.maskb:
+            rgb_T = rgb[target_maskb, :]
+            rgb_F = rgb[~target_maskb, :]
+            target_s_T = target_s[target_maskb, :]
+            target_s_F = target_s[~target_maskb, :]
+            img_loss_T = img2mse(rgb_T, target_s_T)
+            img_loss_F = img2mse(rgb_F, target_s_F)
+            loss = 0.01 * img_loss_T + img_loss_F
+            trans = extras['raw'][..., -1]
+            psnr = mse2psnr(loss)
+        else:
+            img_loss = img2mse(rgb, target_s)
+            trans = extras['raw'][..., -1]
+            loss = img_loss
+            psnr = mse2psnr(img_loss)
 
         if 'rgb0' in extras:
-            img_loss0 = img2mse(extras['rgb0'], target_s)
-            loss = loss + img_loss0
-            psnr0 = mse2psnr(img_loss0)
+            if args.maskb:
+                rgb0_T = extras['rgb0'][target_maskb, :]
+                rgb0_F = extras['rgb0'][~target_maskb, :]
+
+                img_loss0_T = img2mse(rgb0_T, target_s_T)
+                img_loss0_F = img2mse(rgb0_F, target_s_F)
+                # img_loss0 = img2mse(extras['rgb0'], target_s)
+                loss = loss + 0.01 * img_loss0_T + img_loss0_F
+                psnr0 = mse2psnr(0.01 * img_loss0_T + img_loss0_F)
+            else:
+                img_loss0 = img2mse(extras['rgb0'], target_s)
+                loss = loss + img_loss0
+                psnr0 = mse2psnr(img_loss0)
 
         loss.backward()
         optimizer.step()
