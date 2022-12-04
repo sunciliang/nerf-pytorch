@@ -45,7 +45,7 @@ def run_network(inputs, viewdirs, temperatures,fn, embed_fn, embeddirs_fn, netch
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
 
-        input_temperatures = torch.broadcast_to(temperatures[:,None,:], [temperatures.shape[0], inputs.shape[1], 9])
+        input_temperatures = torch.broadcast_to(temperatures[:,None,:], [temperatures.shape[0], inputs.shape[1], 3])
         input_temperatures_flat = torch.reshape(input_temperatures, [-1, input_temperatures.shape[-1]])
         embedded = torch.cat([embedded, embedded_dirs, input_temperatures_flat], -1)
 
@@ -98,7 +98,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     if c2w is not None:
         # special case to render full image
         rays_o, rays_d = get_rays(H, W, K, c2w)
-        temperatures = torch.broadcast_to(temperatures[None, None, :], [H, W, 3,3])
+        temperatures = torch.broadcast_to(temperatures[None, None, :], [H, W, 3])
     else:
         # use provided ray batch
         rays_o, rays_d = rays[:,:3], rays[:,3:]
@@ -120,7 +120,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     # Create ray batch
     rays_o = torch.reshape(rays_o, [-1,3]).float()
     rays_d = torch.reshape(rays_d, [-1,3]).float()
-    temperatures = torch.reshape(temperatures, [-1,9]).float()
+    temperatures = torch.reshape(temperatures, [-1,3]).float()
 
 
     near, far = near * torch.ones_like(rays_d[...,:1]), far * torch.ones_like(rays_d[...,:1])
@@ -157,7 +157,7 @@ def render_path(render_poses, render_temperatures, hwf, K, chunk, render_kwargs,
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
-        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, temperatures=render_temperatures[i,:,:], c2w=c2w[:3,:4], **render_kwargs)
+        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, temperatures=render_temperatures[i,:], c2w=c2w[:3,:4], **render_kwargs)
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
         if i==0:
@@ -358,7 +358,7 @@ def render_rays(ray_batch,
     rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each
     viewdirs = ray_batch[:,8:11] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
-    temperatures = ray_batch[:, -9:]
+    temperatures = ray_batch[:, -3:]
     near, far = bounds[...,0], bounds[...,1] # [-1,1]
 
     t_vals = torch.linspace(0., 1., steps=N_samples)
@@ -702,8 +702,7 @@ def train():
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
     use_batching = not args.no_batching
-    temps =  np.tile(temps[:,None,None,:], [1, H, W, 1,1])
-    temps = temps.reshape(temps.shape[0],H,W,9)
+    temps =  np.tile(temps[:,None,None,:], [1, H, W, 1])
     if use_batching:
         # For random ray batching
         print('get rays')
@@ -715,7 +714,7 @@ def train():
         rays_rgb_temperatures = np.concatenate([rays_rgb, temps], -1)
 
         rays_rgb_temperatures = np.stack([rays_rgb_temperatures[i] for i in i_train], 0) # train images only
-        rays_rgb_temperatures = np.reshape(rays_rgb_temperatures, [-1,18]) # [(N-1)*H*W, ro+rd+rgb, 3]
+        rays_rgb_temperatures = np.reshape(rays_rgb_temperatures, [-1,12]) # [(N-1)*H*W, ro+rd+rgb, 3]
         rays_rgb_temperatures = rays_rgb_temperatures.astype(np.float32)
         print('shuffle rays')
         np.random.shuffle(rays_rgb_temperatures)

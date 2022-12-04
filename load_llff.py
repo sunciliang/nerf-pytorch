@@ -317,11 +317,9 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         r, g, b = convert_K_to_RGB(i)
         r_adjust, g_adjust, b_adjust = r / g, g / g, b / g
         adjust = np.array([
-            [r_adjust, 0, 0],
-            [0, g_adjust, 0],
-            [0, 0, b_adjust]
+            r_adjust, g_adjust, b_adjust
         ])
-        temperatures.append(adjust[np.newaxis,:,:])
+        temperatures.append(adjust[np.newaxis,:])
         # temperatures = np.stack(adjust, 0)
         
     temperatures= np.concatenate(temperatures,axis = 0)
@@ -378,11 +376,9 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         r, g, b = convert_K_to_RGB(i)
         r_adjust, g_adjust, b_adjust = r / g, g / g, b / g
         adjust = np.array([
-            [r_adjust, 0, 0],
-            [0, g_adjust, 0],
-            [0, 0, b_adjust]
+            r_adjust, g_adjust, b_adjust
         ])
-        render_t.append(adjust[np.newaxis, :, :])
+        render_t.append(adjust[np.newaxis, :])
         # temperatures = np.stack(adjust, 0)
 
     render_t = np.concatenate(render_t, axis=0)
