@@ -65,7 +65,7 @@ def get_embedder(multires, i=0):
 
 # Model
 class NeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips=[4], use_viewdirs=False):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, input_ch_temperatures=9,output_ch=4, skips=[4], use_viewdirs=False):
         """ 
         """
         super(NeRF, self).__init__()
@@ -73,14 +73,20 @@ class NeRF(nn.Module):
         self.W = W
         self.input_ch = input_ch
         self.input_ch_views = input_ch_views
+        self.input_ch_temperatures = input_ch_temperatures
         self.skips = skips
         self.use_viewdirs = use_viewdirs
         
         self.pts_linears = nn.ModuleList(
             [nn.Linear(input_ch, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
+
+
         
         ### Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
         self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W//2)])
+        self.temperatures_linears_r = nn.ModuleList([nn.Linear(1, W // 2)])
+        self.temperatures_linears_g = nn.ModuleList([nn.Linear(1, W // 2)])
+        self.temperatures_linears_b = nn.ModuleList([nn.Linear(1, W // 2)])
 
         ### Implementation according to the paper
         # self.views_linears = nn.ModuleList(
@@ -89,12 +95,16 @@ class NeRF(nn.Module):
         if use_viewdirs:
             self.feature_linear = nn.Linear(W, W)
             self.alpha_linear = nn.Linear(W, 1)
+            self.r_linner = nn.Linear(W // 2, 1)
+            self.g_linner = nn.Linear(W // 2, 1)
+            self.b_linner = nn.Linear(W // 2, 1)
             self.rgb_linear = nn.Linear(W//2, 3)
         else:
             self.output_linear = nn.Linear(W, output_ch)
 
     def forward(self, x):
-        input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
+        input_pts, input_views,input_temperatures = torch.split(x, [self.input_ch, self.input_ch_views, self.input_ch_temperatures], dim=-1)
+        input_temperatures = torch.reshape(input_temperatures, (input_temperatures.shape[0], 3,3))
         h = input_pts
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
@@ -111,7 +121,31 @@ class NeRF(nn.Module):
                 h = self.views_linears[i](h)
                 h = F.relu(h)
 
-            rgb = self.rgb_linear(h)
+            e = self.rgb_linear(h)
+            e = e.unsqueeze(1)
+            rgbs_source = torch.matmul(e,input_temperatures)
+            rgbs_source = rgbs_source.squeeze(1)
+            r_source = rgbs_source[:, 0:1]
+            g_source = rgbs_source[:, 1:2]
+            b_source = rgbs_source[:, 2:3]
+
+            for i, l in enumerate(self.temperatures_linears_r):
+                r_source = self.temperatures_linears_r[i](r_source)
+                r_source = F.relu(r_source)
+            r = self.r_linner(r_source)
+
+            for i, l in enumerate(self.temperatures_linears_g):
+                g_source = self.temperatures_linears_g[i](g_source)
+                g_source = F.relu(g_source)
+            g = self.g_linner(g_source)
+
+            for i, l in enumerate(self.temperatures_linears_b):
+                b_source = self.temperatures_linears_b[i](b_source)
+                b_source = F.relu(b_source)
+            b = self.b_linner(b_source)
+
+            rgb = torch.cat([r, g, b], -1)
+
             outputs = torch.cat([rgb, alpha], -1)
         else:
             outputs = self.output_linear(h)

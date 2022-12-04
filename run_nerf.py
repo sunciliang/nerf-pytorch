@@ -34,7 +34,7 @@ def batchify(fn, chunk):
     return ret
 
 
-def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
+def run_network(inputs, viewdirs, temperatures,fn, embed_fn, embeddirs_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'.
     """
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
@@ -44,7 +44,10 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
         input_dirs = viewdirs[:,None].expand(inputs.shape)
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
-        embedded = torch.cat([embedded, embedded_dirs], -1)
+
+        input_temperatures = torch.broadcast_to(temperatures[:,None,:], [temperatures.shape[0], inputs.shape[1], 9])
+        input_temperatures_flat = torch.reshape(input_temperatures, [-1, input_temperatures.shape[-1]])
+        embedded = torch.cat([embedded, embedded_dirs, input_temperatures_flat], -1)
 
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = torch.reshape(outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]])
@@ -67,7 +70,7 @@ def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
 
 
 def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
-                  near=0., far=1.,
+                  near=0., far=1.,temperatures=None,
                   use_viewdirs=False, c2w_staticcam=None,
                   **kwargs):
     """Render rays
@@ -97,7 +100,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
         rays_o, rays_d = get_rays(H, W, K, c2w)
     else:
         # use provided ray batch
-        rays_o, rays_d = rays
+        rays_o, rays_d = rays[:,:3], rays[:,3:]
 
     if use_viewdirs:
         # provide ray directions as input
@@ -116,11 +119,13 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     # Create ray batch
     rays_o = torch.reshape(rays_o, [-1,3]).float()
     rays_d = torch.reshape(rays_d, [-1,3]).float()
+    temperatures = torch.reshape(temperatures, [-1,9]).float()
+
 
     near, far = near * torch.ones_like(rays_d[...,:1]), far * torch.ones_like(rays_d[...,:1])
     rays = torch.cat([rays_o, rays_d, near, far], -1)
     if use_viewdirs:
-        rays = torch.cat([rays, viewdirs], -1)
+        rays = torch.cat([rays, viewdirs,temperatures], -1)
 
     # Render and reshape
     all_ret = batchify_rays(rays, chunk, **kwargs)
@@ -198,7 +203,7 @@ def create_nerf(args):
                           input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
         grad_vars += list(model_fine.parameters())
 
-    network_query_fn = lambda inputs, viewdirs, network_fn : run_network(inputs, viewdirs, network_fn,
+    network_query_fn = lambda inputs, viewdirs, temperatures,network_fn : run_network(inputs, viewdirs, temperatures,network_fn,
                                                                 embed_fn=embed_fn,
                                                                 embeddirs_fn=embeddirs_fn,
                                                                 netchunk=args.netchunk)
@@ -350,8 +355,9 @@ def render_rays(ray_batch,
     """
     N_rays = ray_batch.shape[0]
     rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each
-    viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
+    viewdirs = ray_batch[:,8:11] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
+    temperatures = ray_batch[:, -9:]
     near, far = bounds[...,0], bounds[...,1] # [-1,1]
 
     t_vals = torch.linspace(0., 1., steps=N_samples)
@@ -382,7 +388,7 @@ def render_rays(ray_batch,
 
 
 #     raw = run_network(pts)
-    raw = network_query_fn(pts, viewdirs, network_fn)
+    raw = network_query_fn(pts, viewdirs, temperatures,network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
 
     if N_importance > 0:
@@ -398,7 +404,7 @@ def render_rays(ray_batch,
 
         run_fn = network_fn if network_fine is None else network_fine
 #         raw = run_network(pts, fn=run_fn)
-        raw = network_query_fn(pts, viewdirs, run_fn)
+        raw = network_query_fn(pts, viewdirs, temperatures, run_fn)
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
 
@@ -528,6 +534,9 @@ def config_parser():
     parser.add_argument("--i_video",   type=int, default=50000, 
                         help='frequency of render_poses video saving')
 
+    parser.add_argument('--random_seed', type=int, default=1,
+                        help='random seed for numpy.random.')
+
     return parser
 
 
@@ -539,11 +548,14 @@ def train():
     # Load data
     K = None
     if args.dataset_type == 'llff':
-        images, poses, bds, render_poses, i_test = load_llff_data(args.datadir, args.factor,
+    # TODO :加入T色温
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        images, poses, bds, render_poses, i_test ,temperatures = load_llff_data(args.datadir, args.factor,
                                                                   recenter=True, bd_factor=.75,
                                                                   spherify=args.spherify)
         hwf = poses[0,:3,-1]
         poses = poses[:,:3,:4]
+        render_temperatures = temperatures
         print('Loaded llff', images.shape, render_poses.shape, hwf, args.datadir)
         if not isinstance(i_test, list):
             i_test = [i_test]
@@ -551,6 +563,18 @@ def train():
         if args.llffhold > 0:
             print('Auto LLFF holdout,', args.llffhold)
             i_test = np.arange(images.shape[0])[::args.llffhold]
+        elif args.llffhold == 0:
+            print('Random select images for training.')
+            np.random.seed(args.random_seed)
+            i_train = []
+            exp_num = 3
+            # for i in range(0,images.shape[0] // (exp_num*2) + 1):
+            for i in range(0, images.shape[0] // (exp_num * 1) + 1):
+                step = i*exp_num*1
+                # i_train.append(np.random.choice([0 + step, 3 + step], 1, replace=False))
+                i_train.append(np.random.choice([0+step, 1+step, 2+step], 1, replace=False))
+            i_train = np.sort(np.array(i_train).reshape([-1]))
+            i_test = np.array([i for i in np.arange(int(images.shape[0])) if (i not in i_train)])
 
         i_val = i_test
         i_train = np.array([i for i in np.arange(int(images.shape[0])) if
@@ -621,6 +645,7 @@ def train():
 
     if args.render_test:
         render_poses = np.array(poses[i_test])
+        render_temperatures = np.array(temperatures[i_test])
 
     # Create log dir and copy the config file
     basedir = args.basedir
@@ -649,6 +674,7 @@ def train():
 
     # Move testing data to GPU
     render_poses = torch.Tensor(render_poses).to(device)
+    render_temperatures = torch.Tensor(render_temperatures).to(device)
 
     # Short circuit if only rendering out from trained model
     if args.render_only:
@@ -674,6 +700,8 @@ def train():
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
     use_batching = not args.no_batching
+    temperatures =  np.tile(temperatures[:,None,None,:], [1, H, W, 1,1])
+    temperatures = temperatures.reshape(temperatures.shape[0],H,W,9)
     if use_batching:
         # For random ray batching
         print('get rays')
@@ -681,11 +709,14 @@ def train():
         print('done, concats')
         rays_rgb = np.concatenate([rays, images[:,None]], 1) # [N, ro+rd+rgb, H, W, 3]
         rays_rgb = np.transpose(rays_rgb, [0,2,3,1,4]) # [N, H, W, ro+rd+rgb, 3]
-        rays_rgb = np.stack([rays_rgb[i] for i in i_train], 0) # train images only
-        rays_rgb = np.reshape(rays_rgb, [-1,3,3]) # [(N-1)*H*W, ro+rd+rgb, 3]
-        rays_rgb = rays_rgb.astype(np.float32)
+        rays_rgb = np.reshape(rays_rgb, [rays_rgb.shape[0], H, W, -1])
+        rays_rgb_temperatures = np.concatenate([rays_rgb, temperatures], -1)
+
+        rays_rgb_temperatures = np.stack([rays_rgb_temperatures[i] for i in i_train], 0) # train images only
+        rays_rgb_temperatures = np.reshape(rays_rgb_temperatures, [-1,18]) # [(N-1)*H*W, ro+rd+rgb, 3]
+        rays_rgb_temperatures = rays_rgb_temperatures.astype(np.float32)
         print('shuffle rays')
-        np.random.shuffle(rays_rgb)
+        np.random.shuffle(rays_rgb_temperatures)
 
         print('done')
         i_batch = 0
@@ -695,7 +726,7 @@ def train():
         images = torch.Tensor(images).to(device)
     poses = torch.Tensor(poses).to(device)
     if use_batching:
-        rays_rgb = torch.Tensor(rays_rgb).to(device)
+        rays_rgb_temperatures = torch.Tensor(rays_rgb_temperatures).to(device)
 
 
     N_iters = 200000 + 1
@@ -714,15 +745,15 @@ def train():
         # Sample random ray batch
         if use_batching:
             # Random over all images
-            batch = rays_rgb[i_batch:i_batch+N_rand] # [B, 2+1, 3*?]
-            batch = torch.transpose(batch, 0, 1)
-            batch_rays, target_s = batch[:2], batch[2]
+            batch = rays_rgb_temperatures[i_batch:i_batch+N_rand] # [B, 2+1, 3*?]
+
+            batch_rays, batch_temperatures, target_s = batch[:, :6], batch[:, 9:], batch[:, 6:9]
 
             i_batch += N_rand
-            if i_batch >= rays_rgb.shape[0]:
+            if i_batch >= rays_rgb_temperatures.shape[0]:
                 print("Shuffle data after an epoch!")
-                rand_idx = torch.randperm(rays_rgb.shape[0])
-                rays_rgb = rays_rgb[rand_idx]
+                rand_idx = torch.randperm(rays_rgb_temperatures.shape[0])
+                rays_rgb_temperatures = rays_rgb_temperatures[rand_idx]
                 i_batch = 0
 
         else:
@@ -757,7 +788,7 @@ def train():
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
 
         #####  Core optimization loop  #####
-        rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays,
+        rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays, temperatures=batch_temperatures,
                                                 verbose=i < 10, retraw=True,
                                                 **render_kwargs_train)
 
