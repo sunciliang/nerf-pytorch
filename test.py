@@ -63,42 +63,42 @@ def convert_K_to_RGB(colour_temperature):
 
     return red, green, blue
 
-# imgdir = r'E:\GitHub\nerf-py\data\test'
-# imgfiles = [os.path.join(imgdir, f) for f in sorted(os.listdir(imgdir)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
-# def imread(f):
-#     if f.endswith('png'):
-#         return imageio.imread(f, ignoregamma=True)
-#     else:
-#         return imageio.imread(f)
-# imgs = [imread(f)[...,:3]/255. for f in imgfiles]
-#
-# print('dd')
-# for i in imgs:
-#     temp = i.copy()
-#     temp = temp.reshape(-1,3)
-#     r,g,b = convert_K_to_RGB(3400)
-#     r_adjust, g_adjust, b_adjust = r/g ,g/g ,b/g
-#     temp[:, 0] = temp[:, 0] * r_adjust
-#     temp[:, 1] = temp[:, 1] * g_adjust
-#     temp[:, 2] = temp[:, 2] * b_adjust
-#     temp = temp.reshape(i.shape[0],i.shape[1],3)
-#     fig = plt.figure()
-#     ax = fig.add_subplot(1, 2, 1)
-#     imgplot = plt.imshow(i)
-#     ax.set_title('Before')
-#     ax = fig.add_subplot(1, 2, 2)
-#     imgplot = plt.imshow(temp)
-#     ax.set_title('After')
-#
-#     plt.show()
+imgdir = r'E:\GitHub\tt'
+imgfiles = [os.path.join(imgdir, f) for f in sorted(os.listdir(imgdir)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
+def imread(f):
+    if f.endswith('png'):
+        return imageio.imread(f, ignoregamma=True)
+    else:
+        return imageio.imread(f)
+imgs = [imread(f)[...,:3]/255. for f in imgfiles]
+
+print('dd')
+for i in imgs:
+    temp = i.copy()
+    temp = temp.reshape(-1,3)
+    r,g,b = convert_K_to_RGB(5000)
+    r_adjust, g_adjust, b_adjust = r/255 ,g/255 ,b/255
+    temp[:, 0] = temp[:, 0] * r_adjust
+    temp[:, 1] = temp[:, 1] * g_adjust
+    temp[:, 2] = temp[:, 2] * b_adjust
+    temp = temp.reshape(i.shape[0],i.shape[1],3)
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 2, 1)
+    imgplot = plt.imshow(i)
+    ax.set_title('Before')
+    ax = fig.add_subplot(1, 2, 2)
+    imgplot = plt.imshow(temp)
+    ax.set_title('After')
+
+    plt.show()
 
 
-import numpy as np
+# import numpy as np
 # tt = []
 # key = [6500,2700,4000]
 # for i in range(27):
 #     tt.append(key[i%3])
 # np.save('temperature.npy',tt)
-
-k=np.load(r'E:\GitHub\nerf-py\data\testD\temperature.npy')
-print(k)
+#
+# k=np.load(r'E:\GitHub\nerf-py\data\testD\temperature.npy')
+# print(k)
