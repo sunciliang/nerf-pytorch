@@ -98,6 +98,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     if c2w is not None:
         # special case to render full image
         rays_o, rays_d = get_rays(H, W, K, c2w)
+        temperatures = torch.broadcast_to(temperatures[None, None, :], [H, W, 3,3])
     else:
         # use provided ray batch
         rays_o, rays_d = rays[:,:3], rays[:,3:]
@@ -139,7 +140,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     return ret_list + [ret_dict]
 
 
-def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
+def render_path(render_poses, render_temperatures, hwf, K, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
 
     H, W, focal = hwf
 
@@ -156,7 +157,7 @@ def render_path(render_poses, hwf, K, chunk, render_kwargs, gt_imgs=None, savedi
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
-        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs)
+        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, temperatures=render_temperatures[i,:,:], c2w=c2w[:3,:4], **render_kwargs)
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
         if i==0:
@@ -536,7 +537,8 @@ def config_parser():
 
     parser.add_argument('--random_seed', type=int, default=1,
                         help='random seed for numpy.random.')
-
+    parser.add_argument('--render_T', type=float, default=0.0,
+                        help=' use temperatures of the rendered views')
     return parser
 
 
@@ -550,12 +552,12 @@ def train():
     if args.dataset_type == 'llff':
     # TODO :加入T色温
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        images, poses, bds, render_poses, i_test ,temperatures = load_llff_data(args.datadir, args.factor,
+        images, poses, bds, render_poses, i_test, temperatures, render_temperatures = load_llff_data(args.datadir, args.factor,
                                                                   recenter=True, bd_factor=.75,
-                                                                  spherify=args.spherify)
+                                                                  spherify=args.spherify,use_temperatures=args.render_T)
         hwf = poses[0,:3,-1]
         poses = poses[:,:3,:4]
-        render_temperatures = temperatures
+        temps = temperatures
         print('Loaded llff', images.shape, render_poses.shape, hwf, args.datadir)
         if not isinstance(i_test, list):
             i_test = [i_test]
@@ -700,8 +702,8 @@ def train():
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
     use_batching = not args.no_batching
-    temperatures =  np.tile(temperatures[:,None,None,:], [1, H, W, 1,1])
-    temperatures = temperatures.reshape(temperatures.shape[0],H,W,9)
+    temps =  np.tile(temps[:,None,None,:], [1, H, W, 1,1])
+    temps = temps.reshape(temps.shape[0],H,W,9)
     if use_batching:
         # For random ray batching
         print('get rays')
@@ -710,7 +712,7 @@ def train():
         rays_rgb = np.concatenate([rays, images[:,None]], 1) # [N, ro+rd+rgb, H, W, 3]
         rays_rgb = np.transpose(rays_rgb, [0,2,3,1,4]) # [N, H, W, ro+rd+rgb, 3]
         rays_rgb = np.reshape(rays_rgb, [rays_rgb.shape[0], H, W, -1])
-        rays_rgb_temperatures = np.concatenate([rays_rgb, temperatures], -1)
+        rays_rgb_temperatures = np.concatenate([rays_rgb, temps], -1)
 
         rays_rgb_temperatures = np.stack([rays_rgb_temperatures[i] for i in i_train], 0) # train images only
         rays_rgb_temperatures = np.reshape(rays_rgb_temperatures, [-1,18]) # [(N-1)*H*W, ro+rd+rgb, 3]
@@ -725,6 +727,7 @@ def train():
     if use_batching:
         images = torch.Tensor(images).to(device)
     poses = torch.Tensor(poses).to(device)
+    temps = torch.Tensor(temps).to(device)
     if use_batching:
         rays_rgb_temperatures = torch.Tensor(rays_rgb_temperatures).to(device)
 
@@ -831,9 +834,11 @@ def train():
             print('Saved checkpoints at', path)
 
         if i%args.i_video==0 and i > 0:
+            videosavedir = os.path.join(basedir, expname, 'videoset_{:06d}'.format(i))
+            os.makedirs(videosavedir, exist_ok=True)
             # Turn on testing mode
             with torch.no_grad():
-                rgbs, disps = render_path(render_poses, hwf, K, args.chunk, render_kwargs_test)
+                rgbs, disps = render_path(render_poses, render_temperatures, hwf, K, args.chunk, render_kwargs_test,savedir=videosavedir)
             print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
@@ -851,54 +856,13 @@ def train():
             os.makedirs(testsavedir, exist_ok=True)
             print('test poses shape', poses[i_test].shape)
             with torch.no_grad():
-                render_path(torch.Tensor(poses[i_test]).to(device), hwf, K, args.chunk, render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
+                render_path(torch.Tensor(poses[i_test]).to(device), torch.Tensor(temperatures[i_test]).to(device), hwf, K, args.chunk, render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
             print('Saved test set')
 
 
     
         if i%args.i_print==0:
             tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}")
-        """
-            print(expname, i, psnr.numpy(), loss.numpy(), global_step.numpy())
-            print('iter time {:.05f}'.format(dt))
-
-            with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
-                tf.contrib.summary.scalar('loss', loss)
-                tf.contrib.summary.scalar('psnr', psnr)
-                tf.contrib.summary.histogram('tran', trans)
-                if args.N_importance > 0:
-                    tf.contrib.summary.scalar('psnr0', psnr0)
-
-
-            if i%args.i_img==0:
-
-                # Log a rendered validation view to Tensorboard
-                img_i=np.random.choice(i_val)
-                target = images[img_i]
-                pose = poses[img_i, :3,:4]
-                with torch.no_grad():
-                    rgb, disp, acc, extras = render(H, W, focal, chunk=args.chunk, c2w=pose,
-                                                        **render_kwargs_test)
-
-                psnr = mse2psnr(img2mse(rgb, target))
-
-                with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-
-                    tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
-                    tf.contrib.summary.image('disp', disp[tf.newaxis,...,tf.newaxis])
-                    tf.contrib.summary.image('acc', acc[tf.newaxis,...,tf.newaxis])
-
-                    tf.contrib.summary.scalar('psnr_holdout', psnr)
-                    tf.contrib.summary.image('rgb_holdout', target[tf.newaxis])
-
-
-                if args.N_importance > 0:
-
-                    with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-                        tf.contrib.summary.image('rgb0', to8b(extras['rgb0'])[tf.newaxis])
-                        tf.contrib.summary.image('disp0', extras['disp0'][tf.newaxis,...,tf.newaxis])
-                        tf.contrib.summary.image('z_std', extras['z_std'][tf.newaxis,...,tf.newaxis])
-        """
 
         global_step += 1
 

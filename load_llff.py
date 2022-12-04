@@ -298,7 +298,7 @@ def convert_K_to_RGB(colour_temperature):
     return red, green, blue
 
 
-def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=False, path_zflat=False):
+def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=False, path_zflat=False, use_temperatures=5000):
     
 
     poses, bds, imgs, temperature = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
@@ -314,7 +314,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     temperature = temperature.astype(np.float32)
     temperatures = []
     for i in temperature:
-        r, g, b = convert_K_to_RGB(3400)
+        r, g, b = convert_K_to_RGB(i)
         r_adjust, g_adjust, b_adjust = r / g, g / g, b / g
         adjust = np.array([
             [r_adjust, 0, 0],
@@ -371,8 +371,22 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
 
         # Generate poses for spiral path
         render_poses = render_path_spiral(c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=N_views)
-        
-        
+        render_temperatures = np.linspace(use_temperatures, use_temperatures, N_views)
+
+    render_t = []
+    for i in render_temperatures:
+        r, g, b = convert_K_to_RGB(i)
+        r_adjust, g_adjust, b_adjust = r / g, g / g, b / g
+        adjust = np.array([
+            [r_adjust, 0, 0],
+            [0, g_adjust, 0],
+            [0, 0, b_adjust]
+        ])
+        render_t.append(adjust[np.newaxis, :, :])
+        # temperatures = np.stack(adjust, 0)
+
+    render_t = np.concatenate(render_t, axis=0)
+    render_t = np.array(render_t).astype(np.float32)
     render_poses = np.array(render_poses).astype(np.float32)
 
 
@@ -387,7 +401,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     images = images.astype(np.float32)
     poses = poses.astype(np.float32)
 
-    return images, poses, bds, render_poses, i_test ,temperatures
+    return images, poses, bds, render_poses, i_test, temperatures, render_t
 
 
 
