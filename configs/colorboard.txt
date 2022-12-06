@@ -1,6 +1,6 @@
-expname = colorboard
+expname = colorboard18
 basedir = ./logs
-datadir = ./data/colorboard
+datadir = ./data/colorboard18
 dataset_type = llff
 
 #no_batching = True

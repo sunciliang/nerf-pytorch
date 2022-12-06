@@ -79,7 +79,7 @@
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <module name="" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/run_nerf.py" />
-      <option name="PARAMETERS" value="--config configs/testD.txt" />
+      <option name="PARAMETERS" value="--config configs/colorboard.txt" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
       <option name="MODULE_MODE" value="false" />
@@ -199,18 +199,13 @@
           <option name="timeStamp" value="13" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/test.py</url>
-          <line>124</line>
-          <option name="timeStamp" value="95" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/run_nerf.py</url>
           <line>159</line>
           <option name="timeStamp" value="107" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/run_nerf.py</url>
-          <line>100</line>
+          <line>101</line>
           <option name="timeStamp" value="109" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -220,8 +215,18 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/run_nerf.py</url>
-          <line>122</line>
+          <line>123</line>
           <option name="timeStamp" value="145" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/load_llff.py</url>
+          <line>317</line>
+          <option name="timeStamp" value="148" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/test.py</url>
+          <line>80</line>
+          <option name="timeStamp" value="149" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
