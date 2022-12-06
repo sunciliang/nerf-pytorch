@@ -731,7 +731,7 @@ def train():
         rays_rgb_temperatures = torch.Tensor(rays_rgb_temperatures).to(device)
 
 
-    N_iters = 200000 + 1
+    N_iters = 100000 + 1
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)
@@ -833,13 +833,13 @@ def train():
             print('Saved checkpoints at', path)
 
         if i%args.i_video==0 and i > 0:
-            videosavedir = os.path.join(basedir, expname, 'videoset_{:06d}'.format(i))
+            videosavedir = os.path.join(basedir, expname, 'videoset_{:06d}_T{}'.format(i,args.render_T))
             os.makedirs(videosavedir, exist_ok=True)
             # Turn on testing mode
             with torch.no_grad():
                 rgbs, disps = render_path(render_poses, render_temperatures, hwf, K, args.chunk, render_kwargs_test,savedir=videosavedir)
             print('Done, saving', rgbs.shape, disps.shape)
-            moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
+            moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_T{}'.format(expname, i,args.render_T))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
             imageio.mimwrite(moviebase + 'disp.mp4', to8b(disps / np.max(disps)), fps=30, quality=8)
 
