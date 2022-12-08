@@ -681,10 +681,10 @@ def train():
             i_test = np.arange(images.shape[0])[::args.llffhold]
         else:
             i_train = []
-            exp_num = 5
-            for i in range(0, images.shape[0] // (exp_num * 2) + 1, 2):
-                step = i * exp_num * 2
-                i_train.append(np.random.choice([0 + step, 2 + step, 4 + step], 1, replace=False))
+            exp_num = 3
+            for i in range(0, images.shape[0] // (exp_num * 2) + 1):
+                step = i * exp_num * 1
+                i_train.append(np.random.choice([0 + step, 1 + step, 2 + step], 1, replace=False))
                 # i_train.append(np.random.choice([0+step, 2+step, 4+step], 1, replace=False))
             i_train = np.sort(np.array(i_train).reshape([-1]))
             i_test = np.array([i for i in np.arange(int(images.shape[0])) if (i not in i_train)])
