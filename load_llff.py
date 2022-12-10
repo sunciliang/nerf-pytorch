@@ -312,18 +312,8 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     images = imgs
     bds = np.moveaxis(bds, -1, 0).astype(np.float32)
     temperature = temperature.astype(np.float32)
-    temperatures = []
-    for i in temperature:
-        r, g, b = convert_K_to_RGB(i)
-        r_adjust, g_adjust, b_adjust = r / g, g / g, b / g
-        adjust = np.array([
-            r_adjust, g_adjust, b_adjust
-        ])
-        temperatures.append(adjust[np.newaxis,:])
-        # temperatures = np.stack(adjust, 0)
-        
-    temperatures= np.concatenate(temperatures,axis = 0)
-    print('temperature', temperatures.shape)
+
+    print('temperature', temperature.shape)
     # Rescale if bd_factor is provided
     sc = 1. if bd_factor is None else 1./(bds.min() * bd_factor)
     poses[:,:3,3] *= sc
@@ -371,17 +361,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         render_poses = render_path_spiral(c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=N_views)
         render_temperatures = np.linspace(use_temperatures, use_temperatures, N_views)
 
-    render_t = []
-    for i in render_temperatures:
-        r, g, b = convert_K_to_RGB(i)
-        r_adjust, g_adjust, b_adjust = r / g, g / g, b / g
-        adjust = np.array([
-            r_adjust, g_adjust, b_adjust
-        ])
-        render_t.append(adjust[np.newaxis, :])
-        # temperatures = np.stack(adjust, 0)
-
-    render_t = np.concatenate(render_t, axis=0)
+    render_t = render_temperatures.reshape(-1,1)
     render_t = np.array(render_t).astype(np.float32)
     render_poses = np.array(render_poses).astype(np.float32)
 
@@ -397,7 +377,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     images = images.astype(np.float32)
     poses = poses.astype(np.float32)
 
-    return images, poses, bds, render_poses, i_test, temperatures, render_t
+    return images, poses, bds, render_poses, i_test, temperature, render_t
 
 
 

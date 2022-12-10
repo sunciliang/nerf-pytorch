@@ -45,7 +45,7 @@ def run_network(inputs, viewdirs, temperatures,fn, embed_fn, embeddirs_fn, netch
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
 
-        input_temperatures = torch.broadcast_to(temperatures[:,None,:], [temperatures.shape[0], inputs.shape[1], 3])
+        input_temperatures = torch.broadcast_to(temperatures[:,None,:], [temperatures.shape[0], inputs.shape[1], 1])
         input_temperatures_flat = torch.reshape(input_temperatures, [-1, input_temperatures.shape[-1]])
         embedded = torch.cat([embedded, embedded_dirs, input_temperatures_flat], -1)
 
@@ -98,7 +98,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     if c2w is not None:
         # special case to render full image
         rays_o, rays_d = get_rays(H, W, K, c2w)
-        temperatures = torch.broadcast_to(temperatures[None, None, :], [H, W, 3])
+        temperatures = torch.broadcast_to(temperatures[None, None, :], [H, W, 1])
     else:
         # use provided ray batch
         rays_o, rays_d = rays[:,:3], rays[:,3:]
@@ -120,7 +120,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     # Create ray batch
     rays_o = torch.reshape(rays_o, [-1,3]).float()
     rays_d = torch.reshape(rays_d, [-1,3]).float()
-    temperatures = torch.reshape(temperatures, [-1,3]).float()
+    temperatures = torch.reshape(temperatures, [-1,1]).float()
 
 
     near, far = near * torch.ones_like(rays_d[...,:1]), far * torch.ones_like(rays_d[...,:1])
@@ -358,7 +358,7 @@ def render_rays(ray_batch,
     rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each
     viewdirs = ray_batch[:,8:11] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
-    temperatures = ray_batch[:, -3:]
+    temperatures = ray_batch[:, -1:]
     near, far = bounds[...,0], bounds[...,1] # [-1,1]
 
     t_vals = torch.linspace(0., 1., steps=N_samples)
@@ -550,8 +550,6 @@ def train():
     # Load data
     K = None
     if args.dataset_type == 'llff':
-    # TODO :加入T色温
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         images, poses, bds, render_poses, i_test, temperatures, render_temperatures = load_llff_data(args.datadir, args.factor,
                                                                   recenter=True, bd_factor=.75,
                                                                   spherify=args.spherify,use_temperatures=args.render_T)
@@ -714,7 +712,7 @@ def train():
         rays_rgb_temperatures = np.concatenate([rays_rgb, temps], -1)
 
         rays_rgb_temperatures = np.stack([rays_rgb_temperatures[i] for i in i_train], 0) # train images only
-        rays_rgb_temperatures = np.reshape(rays_rgb_temperatures, [-1,12]) # [(N-1)*H*W, ro+rd+rgb, 3]
+        rays_rgb_temperatures = np.reshape(rays_rgb_temperatures, [-1,10]) # [(N-1)*H*W, ro+rd+rgb, 3]
         rays_rgb_temperatures = rays_rgb_temperatures.astype(np.float32)
         print('shuffle rays')
         np.random.shuffle(rays_rgb_temperatures)
