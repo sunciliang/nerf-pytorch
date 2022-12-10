@@ -5,6 +5,7 @@ import numpy as np
 import math
 to8b = lambda x : (255*np.clip(x,0,1)).astype(np.uint8)
 import rawpy
+import copy
 
 def convert_K_to_RGB(colour_temperature):
     """
@@ -65,51 +66,42 @@ def convert_K_to_RGB(colour_temperature):
 
     return red, green, blue
 
-# imgdir = r'E:\GitHub\nerf-py\data\tt'
-# savedir = r'E:\GitHub\nerf-py\data\test_synthetic\input'
-# imgfiles = [os.path.join(imgdir, f) for f in sorted(os.listdir(imgdir)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
-# def imread(f):
-#     if f.endswith('png'):
-#         return imageio.imread(f, ignoregamma=True)
-#     else:
-#         return imageio.imread(f)
-# imgs = [imread(f)[...,:3]/255. for f in imgfiles]
-#
-# K = [2700,3000,5500,9000,14000]
-# print('dd')
-# for idx, i in enumerate(imgs):
-#     # cropped_img = i[700:4700, 400:6800]
-#     for idxtt, temps in enumerate(K):
-#         print(temps)
-#         temp = i.copy()
-#         temp = temp.reshape(-1,3)
-#         r,g,b = convert_K_to_RGB(temps)
-#         r_adjust, g_adjust, b_adjust = r/255 ,g/255 ,b/255
-#         temp[:, 0] = temp[:, 0] * r_adjust
-#         temp[:, 1] = temp[:, 1] * g_adjust
-#         temp[:, 2] = temp[:, 2] * b_adjust
-#         temp = temp.reshape(i.shape[0], i.shape[1], 3)
-#
-#         temp1 = i.copy()
-#         r, g, b = convert_K_to_RGB(temps)
-#         r_adjust, g_adjust, b_adjust = r / g, g / g, b / g
-#         temp1[:, 0] = temp1[:, 0] * r_adjust
-#         temp1[:, 1] = temp1[:, 1] * g_adjust
-#         temp1[:, 2] = temp1[:, 2] * b_adjust
-#         temp1 = temp1.reshape(i.shape[0], i.shape[1], 3)
-#
-#         fig = plt.figure()
-#         ax = fig.add_subplot(1, 3, 1)
-#         imgplot = plt.imshow(i)
-#         ax.set_title('Before')
-#         ax = fig.add_subplot(1, 3, 2)
-#         imgplot = plt.imshow(temp)
-#         ax.set_title('After')
-#         ax = fig.add_subplot(1, 3, 3)
-#         imgplot = plt.imshow(temp1)
-#         ax.set_title('2700')
-#
-#         plt.show()
+imgdir = r'E:\GitHub\nerf-py\data\t'
+savedir = r'E:\GitHub\nerf-py\data\test_synthetic\input'
+imgfiles = [os.path.join(imgdir, f) for f in sorted(os.listdir(imgdir)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
+def imread(f):
+    if f.endswith('png'):
+        return imageio.imread(f, ignoregamma=True)
+    else:
+        return imageio.imread(f)
+imgs = [imread(f)[...,:3]/255. for f in imgfiles]
+
+K = [2700,3000,5500,9000,14000,34000]
+print('dd')
+for idx, i in enumerate(imgs):
+    # cropped_img = i[700:4700, 400:6800]
+    for idxtt, temps in enumerate(K):
+        print(temps)
+        temp = copy.deepcopy(i)
+        temp = temp.reshape(-1,3)
+        r,g,b = convert_K_to_RGB(temps)
+        r_adjust, g_adjust, b_adjust = r / g, g / g, b / g
+        adjust = np.array([])
+        temp[:, 0] = temp[:, 0] * r_adjust
+        temp[:, 1] = temp[:, 1] * g_adjust
+        temp[:, 2] = temp[:, 2] * b_adjust
+        temp = temp.reshape(i.shape[0], i.shape[1], 3)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 2, 1)
+        imgplot = plt.imshow(i)
+        ax.set_title('Before')
+        ax = fig.add_subplot(1, 2, 2)
+        imgplot = plt.imshow(temp)
+        ax.set_title('After')
+
+
+        plt.show()
 #
 #         # rgb8 = to8b(temp)
 #         # filename = os.path.join(savedir, '{:03d}{}.png'.format(idx,idxtt))
@@ -118,12 +110,12 @@ def convert_K_to_RGB(colour_temperature):
 
 
 
-import numpy as np
-tt = []
-key = [2700,6500,4000]
-for i in range(48):
-    tt.append(key[i%3])
-np.save('temperature.npy',tt)
+# import numpy as np
+# tt = []
+# key = [2700,6500,4000]
+# for i in range(48):
+#     tt.append(key[i%3])
+# np.save('temperature.npy',tt)
 # #
 # k=np.load(r'E:\GitHub\nerf-py\temperature.npy')
 # print(k)
