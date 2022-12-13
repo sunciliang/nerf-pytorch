@@ -794,7 +794,6 @@ def train():
 
         optimizer.zero_grad()
         img_loss = img2mse(rgb, target_s)
-        test_loss = testloss(render_kwargs_train['network_fn'], 1)
         trans = extras['raw'][...,-1]
         loss = img_loss
         psnr = mse2psnr(img_loss)

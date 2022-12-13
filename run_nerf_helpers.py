@@ -288,29 +288,3 @@ def sample_pdf(bins, weights, N_samples, det=False, pytest=False):
     return samples
 
 
-def testloss(model, gt):
-    rgbs = torch.ones([3, 1])
-
-    r_t = rgbs
-    g_t = rgbs
-    b_t = rgbs
-
-    for i, l in enumerate(model.temperatures_linears_r):
-        r_t = model.temperatures_linears_r[i](r_t)
-        r_t = F.relu(r_t)
-    r = model.r_linner(r_t)
-
-    for i, l in enumerate(model.temperatures_linears_g):
-        g_t = model.temperatures_linears_g[i](g_t)
-        g_t = F.relu(g_t)
-    g = model.g_linner(g_t)
-
-    for i, l in enumerate(model.temperatures_linears_b):
-        b_t = model.temperatures_linears_b[i](b_t)
-        b_t = F.relu(b_t)
-    b = model.b_linner(b_t)
-
-
-    rgb = torch.sigmoid(torch.cat([r, g, b], -1))
-
-    return img2mse(rgb, gt)
