@@ -3,7 +3,7 @@ basedir = ./logs
 datadir = ./data/four
 dataset_type = llff
 
-#no_batching = True
+no_batching = True
 
 factor = 8
 llffhold = 0
@@ -16,6 +16,7 @@ use_viewdirs = True
 raw_noise_std = 1e0
 
 i_video = 1
+i_test = 10
 
 render_T = 5000
 

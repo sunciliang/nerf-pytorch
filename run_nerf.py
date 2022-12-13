@@ -34,7 +34,7 @@ def batchify(fn, chunk):
     return ret
 
 
-def run_network(inputs, viewdirs, temperatures,fn, embed_fn, embeddirs_fn, netchunk=1024*64):
+def run_network(inputs, viewdirs, temperatures,embedded_g,fn, embed_fn, embeddirs_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'.
     """
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
@@ -47,7 +47,8 @@ def run_network(inputs, viewdirs, temperatures,fn, embed_fn, embeddirs_fn, netch
 
         input_temperatures = torch.broadcast_to(temperatures[:,None,:], [temperatures.shape[0], inputs.shape[1], 1])
         input_temperatures_flat = torch.reshape(input_temperatures, [-1, input_temperatures.shape[-1]])
-        embedded = torch.cat([embedded, embedded_dirs, input_temperatures_flat], -1)
+        embedded = torch.cat([embedded, embedded_dirs, input_temperatures_flat,
+                              embedded_g.expand(embedded_dirs.shape[0], embedded_g.shape[0])], -1)
 
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = torch.reshape(outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]])
@@ -140,7 +141,8 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     return ret_list + [ret_dict]
 
 
-def render_path(render_poses, render_temperatures, hwf, K, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
+def render_path(args, render_poses, render_temperatures, hwf, K, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0,
+                embedcam_fn=None,i_test=None):
 
     H, W, focal = hwf
 
@@ -156,6 +158,13 @@ def render_path(render_poses, render_temperatures, hwf, K, chunk, render_kwargs,
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
+        if args.input_ch_g > 0:
+            if embedcam_fn is None:
+                # use zero embedding at test time or optimize for the latent code
+                render_kwargs["embedded_g"] = torch.zeros((args.input_ch_g), device=device)
+            else:
+                img_idx = i_test[i] % args.temp_num
+                render_kwargs["embedded_g"] = embedcam_fn(torch.tensor(img_idx, device=device))
         t = time.time()
         rgb, disp, acc, _ = render(H, W, K, chunk=chunk, temperatures=render_temperatures[i,:], c2w=c2w[:3,:4], **render_kwargs)
         rgbs.append(rgb.cpu().numpy())
@@ -194,17 +203,17 @@ def create_nerf(args):
     skips = [4]
     model = NeRF(D=args.netdepth, W=args.netwidth,
                  input_ch=input_ch, output_ch=output_ch, skips=skips,
-                 input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
+                 input_ch_views=input_ch_views, input_ch_g=args.input_ch_g, use_viewdirs=args.use_viewdirs).to(device)
     grad_vars = list(model.parameters())
 
     model_fine = None
     if args.N_importance > 0:
         model_fine = NeRF(D=args.netdepth_fine, W=args.netwidth_fine,
                           input_ch=input_ch, output_ch=output_ch, skips=skips,
-                          input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
+                          input_ch_views=input_ch_views, input_ch_g=args.input_ch_g, use_viewdirs=args.use_viewdirs).to(device)
         grad_vars += list(model_fine.parameters())
 
-    network_query_fn = lambda inputs, viewdirs, temperatures,network_fn : run_network(inputs, viewdirs, temperatures,network_fn,
+    network_query_fn = lambda inputs, viewdirs, temperatures, embedded_g, network_fn : run_network(inputs, viewdirs, temperatures, embedded_g, network_fn,
                                                                 embed_fn=embed_fn,
                                                                 embeddirs_fn=embeddirs_fn,
                                                                 netchunk=args.netchunk)
@@ -239,9 +248,10 @@ def create_nerf(args):
             model_fine.load_state_dict(ckpt['network_fine_state_dict'])
 
     ##########################
-
+    embedded_g = torch.tensor((), device=device)
     render_kwargs_train = {
         'network_query_fn' : network_query_fn,
+        'embedded_g': embedded_g,
         'perturb' : args.perturb,
         'N_importance' : args.N_importance,
         'network_fine' : model_fine,
@@ -315,6 +325,7 @@ def render_rays(ray_batch,
                 network_fn,
                 network_query_fn,
                 N_samples,
+                embedded_g=None,
                 retraw=False,
                 lindisp=False,
                 perturb=0.,
@@ -389,7 +400,7 @@ def render_rays(ray_batch,
 
 
 #     raw = run_network(pts)
-    raw = network_query_fn(pts, viewdirs, temperatures,network_fn)
+    raw = network_query_fn(pts, viewdirs, temperatures, embedded_g, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
 
     if N_importance > 0:
@@ -405,7 +416,7 @@ def render_rays(ray_batch,
 
         run_fn = network_fn if network_fine is None else network_fine
 #         raw = run_network(pts, fn=run_fn)
-        raw = network_query_fn(pts, viewdirs, temperatures, run_fn)
+        raw = network_query_fn(pts, viewdirs, temperatures, embedded_g, run_fn)
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
 
@@ -539,6 +550,10 @@ def config_parser():
                         help='random seed for numpy.random.')
     parser.add_argument('--render_T', type=float, default=0.0,
                         help=' use temperatures of the rendered views')
+    parser.add_argument("--input_ch_g", type=int, default=1,
+                        help='number of channels for green embedding')
+    parser.add_argument("--temp_num", type=int, default=4,
+                        help='number of temperatures')
     return parser
 
 
@@ -567,12 +582,12 @@ def train():
             print('Random select images for training.')
             np.random.seed(args.random_seed)
             i_train = []
-            exp_num = 3
-            # for i in range(0,images.shape[0] // (exp_num*2) + 1):
-            for i in range(0, images.shape[0] // (exp_num * 1) + 1):
-                step = i*exp_num*1
+            args.temp_num = 4
+            # for i in range(0,images.shape[0] // ( args.temp_num*2) + 1):
+            for i in range(0, images.shape[0] // ( args.temp_num * 1) + 1):
+                step = i * args.temp_num * 1
                 # i_train.append(np.random.choice([0 + step, 3 + step], 1, replace=False))
-                i_train.append(np.random.choice([0+step, 1+step, 2+step], 1, replace=False))
+                i_train.append(np.random.choice([0+step, 1+step, 2+step, 3+step], 1, replace=False))
             i_train = np.sort(np.array(i_train).reshape([-1]))
             i_test = np.array([i for i in np.arange(int(images.shape[0])) if (i not in i_train)])
 
@@ -664,6 +679,11 @@ def train():
     # Create nerf model
     render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
     global_step = start
+
+    # create green embedding function
+    embedcam_fn = None
+    if args.input_ch_g > 0:
+        embedcam_fn = torch.nn.Embedding( args.temp_num, args.input_ch_g)
 
     bds_dict = {
         'near' : near,
@@ -762,6 +782,7 @@ def train():
             target = images[img_i]
             target = torch.Tensor(target).to(device)
             pose = poses[img_i, :3,:4]
+            temp = temps[img_i,...]
 
             if N_rand is not None:
                 rays_o, rays_d = get_rays(H, W, K, torch.Tensor(pose))  # (H, W, 3), (H, W, 3)
@@ -785,7 +806,13 @@ def train():
                 rays_o = rays_o[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 rays_d = rays_d[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
                 batch_rays = torch.stack([rays_o, rays_d], 0)
+                batch_rays = batch_rays.permute(1,0,2)
+                batch_rays = batch_rays.reshape(-1,6)
+                batch_temperatures = temp[select_coords[:, 0], select_coords[:, 1]]
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
+
+            if args.input_ch_g > 0:
+                render_kwargs_train['embedded_g'] = embedcam_fn(torch.tensor(img_i% args.temp_num, device=device))
 
         #####  Core optimization loop  #####
         rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays, temperatures=batch_temperatures,
@@ -835,7 +862,7 @@ def train():
             os.makedirs(videosavedir, exist_ok=True)
             # Turn on testing mode
             with torch.no_grad():
-                rgbs, disps = render_path(render_poses, render_temperatures, hwf, K, args.chunk, render_kwargs_test,savedir=videosavedir)
+                rgbs, disps = render_path(args,render_poses, render_temperatures, hwf, K, args.chunk, render_kwargs_test,savedir=videosavedir)
             print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_T{}'.format(expname, i,args.render_T))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
@@ -853,7 +880,7 @@ def train():
             os.makedirs(testsavedir, exist_ok=True)
             print('test poses shape', poses[i_test].shape)
             with torch.no_grad():
-                render_path(torch.Tensor(poses[i_test]).to(device), torch.Tensor(temperatures[i_test]).to(device), hwf, K, args.chunk, render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
+                render_path(args,torch.Tensor(poses[i_test]).to(device), torch.Tensor(temperatures[i_test]).to(device), hwf, K, args.chunk, render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir,i_test=i_test,embedcam_fn=embedcam_fn)
             print('Saved test set')
 
 
