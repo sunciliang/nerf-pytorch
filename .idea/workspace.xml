@@ -89,8 +89,8 @@
       <method v="2" />
     </configuration>
     <list>
-      <item itemvalue="Python.test" />
       <item itemvalue="Python.run_nerf" />
+      <item itemvalue="Python.test" />
     </list>
     <recent_temporary>
       <list>
