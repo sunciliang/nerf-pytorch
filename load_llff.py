@@ -311,7 +311,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     imgs = np.moveaxis(imgs, -1, 0).astype(np.float32)
     images = imgs
     bds = np.moveaxis(bds, -1, 0).astype(np.float32)
-    temperature = temperature.astype(np.float32)
+    temperature = temperature.astype(np.float32) /10000
 
     print('temperature', temperature.shape)
     # Rescale if bd_factor is provided
@@ -359,7 +359,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
 
         # Generate poses for spiral path
         render_poses = render_path_spiral(c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=N_views)
-        render_temperatures = np.linspace(use_temperatures, use_temperatures, N_views)
+        render_temperatures = np.linspace(use_temperatures/10000, use_temperatures/10000, N_views)
 
     render_t = render_temperatures.reshape(-1,1)
     render_t = np.array(render_t).astype(np.float32)

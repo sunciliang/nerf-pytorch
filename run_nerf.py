@@ -296,7 +296,7 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
             noise = np.random.rand(*list(raw[...,3].shape)) * raw_noise_std
             noise = torch.Tensor(noise)
 
-    alpha = raw2alpha(raw[...,3] + noise, dists)  # [N_rays, N_samples]
+    alpha = raw2alpha(raw[...,3] + noise, dists*25)  # [N_rays, N_samples]
     # weights = alpha * tf.math.cumprod(1.-alpha + 1e-10, -1, exclusive=True)
     weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1.-alpha + 1e-10], -1), -1)[:, :-1]
     rgb_map = torch.sum(weights[...,None] * rgb, -2)  # [N_rays, 3]
@@ -567,12 +567,12 @@ def train():
             print('Random select images for training.')
             np.random.seed(args.random_seed)
             i_train = []
-            exp_num = 3
+            exp_num = 5
             # for i in range(0,images.shape[0] // (exp_num*2) + 1):
             for i in range(0, images.shape[0] // (exp_num * 1) + 1):
                 step = i*exp_num*1
                 # i_train.append(np.random.choice([0 + step, 3 + step], 1, replace=False))
-                i_train.append(np.random.choice([0+step, 1+step, 2+step], 1, replace=False))
+                i_train.append(np.random.choice([0+step, 1+step, 2+step, 3+step, 4+step], 1, replace=False))
             i_train = np.sort(np.array(i_train).reshape([-1]))
             i_test = np.array([i for i in np.arange(int(images.shape[0])) if (i not in i_train)])
 
@@ -729,7 +729,7 @@ def train():
         rays_rgb_temperatures = torch.Tensor(rays_rgb_temperatures).to(device)
 
 
-    N_iters = 50000 + 1
+    N_iters = 100000 + 1
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)

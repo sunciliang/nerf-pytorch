@@ -45,7 +45,7 @@
       <recent name="E:\GitHub\nerf-py" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.test">
+  <component name="RunManager" selected="Python.run_nerf">
     <configuration name="run_nerf" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="nerf-py" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -59,7 +59,7 @@
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/run_nerf.py" />
-      <option name="PARAMETERS" value="--config configs/four.txt" />
+      <option name="PARAMETERS" value="--config configs/three.txt" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
       <option name="MODULE_MODE" value="false" />
@@ -89,13 +89,13 @@
       <method v="2" />
     </configuration>
     <list>
-      <item itemvalue="Python.run_nerf" />
       <item itemvalue="Python.test" />
+      <item itemvalue="Python.run_nerf" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.test" />
         <item itemvalue="Python.run_nerf" />
+        <item itemvalue="Python.test" />
       </list>
     </recent_temporary>
   </component>
@@ -132,6 +132,11 @@
           <url>file://$PROJECT_DIR$/test.py</url>
           <line>123</line>
           <option name="timeStamp" value="150" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/run_nerf.py</url>
+          <line>558</line>
+          <option name="timeStamp" value="174" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
