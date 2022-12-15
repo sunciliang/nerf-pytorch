@@ -134,7 +134,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)
 
-    k_extract = ['rgb_map', 'disp_map', 'acc_map']
+    k_extract = ['rgb_map', 'disp_map', 'acc_map', 'depth_map']
     ret_list = [all_ret[k] for k in k_extract]
     ret_dict = {k : all_ret[k] for k in all_ret if k not in k_extract}
     return ret_list + [ret_dict]
@@ -152,16 +152,22 @@ def render_path(render_poses, render_temperatures, hwf, K, chunk, render_kwargs,
 
     rgbs = []
     disps = []
+    depths = []
 
+    near,far = render_kwargs['near'],render_kwargs['far']
+    near_far = [near,far]
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
-        rgb, disp, acc, _ = render(H, W, K, chunk=chunk, temperatures=render_temperatures[i,:], c2w=c2w[:3,:4], **render_kwargs)
+        rgb, disp, acc, depth, _ = render(H, W, K, chunk=chunk, temperatures=render_temperatures[i,:], c2w=c2w[:3,:4], **render_kwargs)
+
+        depth_map, _ = visualize_depth_numpy(depth.cpu().numpy(), near_far)
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
+        depths.append(depth_map)
         if i==0:
-            print(rgb.shape, disp.shape)
+            print(rgb.shape, disp.shape,depth.shape)
 
         """
         if gt_imgs is not None and render_factor==0:
@@ -177,8 +183,9 @@ def render_path(render_poses, render_temperatures, hwf, K, chunk, render_kwargs,
 
     rgbs = np.stack(rgbs, 0)
     disps = np.stack(disps, 0)
+    depths = np.stack(depths, 0)
 
-    return rgbs, disps
+    return rgbs, disps, depths
 
 
 def create_nerf(args):
@@ -296,7 +303,7 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
             noise = np.random.rand(*list(raw[...,3].shape)) * raw_noise_std
             noise = torch.Tensor(noise)
 
-    alpha = raw2alpha(raw[...,3] + noise, dists*25)  # [N_rays, N_samples]
+    alpha = raw2alpha(raw[...,3] + noise, dists)  # [N_rays, N_samples]
     # weights = alpha * tf.math.cumprod(1.-alpha + 1e-10, -1, exclusive=True)
     weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1.-alpha + 1e-10], -1), -1)[:, :-1]
     rgb_map = torch.sum(weights[...,None] * rgb, -2)  # [N_rays, 3]
@@ -394,7 +401,7 @@ def render_rays(ray_batch,
 
     if N_importance > 0:
 
-        rgb_map_0, disp_map_0, acc_map_0 = rgb_map, disp_map, acc_map
+        rgb_map_0, disp_map_0, acc_map_0, depth_map0 = rgb_map, disp_map, acc_map, depth_map
 
         z_vals_mid = .5 * (z_vals[...,1:] + z_vals[...,:-1])
         z_samples = sample_pdf(z_vals_mid, weights[...,1:-1], N_importance, det=(perturb==0.), pytest=pytest)
@@ -409,13 +416,14 @@ def render_rays(ray_batch,
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
 
-    ret = {'rgb_map' : rgb_map, 'disp_map' : disp_map, 'acc_map' : acc_map}
+    ret = {'rgb_map' : rgb_map, 'disp_map' : disp_map, 'acc_map' : acc_map,'depth_map':depth_map}
     if retraw:
         ret['raw'] = raw
     if N_importance > 0:
         ret['rgb0'] = rgb_map_0
         ret['disp0'] = disp_map_0
         ret['acc0'] = acc_map_0
+        ret['depth_map0'] = depth_map0
         ret['z_std'] = torch.std(z_samples, dim=-1, unbiased=False)  # [N_rays]
 
     for k in ret:
@@ -788,7 +796,7 @@ def train():
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
 
         #####  Core optimization loop  #####
-        rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays, temperatures=batch_temperatures,
+        rgb, disp, acc, depth, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays, temperatures=batch_temperatures,
                                                 verbose=i < 10, retraw=True,
                                                 **render_kwargs_train)
 
@@ -835,11 +843,12 @@ def train():
             os.makedirs(videosavedir, exist_ok=True)
             # Turn on testing mode
             with torch.no_grad():
-                rgbs, disps = render_path(render_poses, render_temperatures, hwf, K, args.chunk, render_kwargs_test,savedir=videosavedir)
+                rgbs, disps, depths = render_path(render_poses, render_temperatures, hwf, K, args.chunk, render_kwargs_test,savedir=videosavedir)
             print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_T{}'.format(expname, i,args.render_T))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
             imageio.mimwrite(moviebase + 'disp.mp4', to8b(disps / np.max(disps)), fps=30, quality=8)
+            imageio.mimwrite(moviebase + 'depth.mp4', to8b(disps / np.max(disps)), fps=30, quality=8)
 
             # if args.use_viewdirs:
             #     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3,:4]

@@ -115,13 +115,8 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/run_nerf.py</url>
-          <line>837</line>
+          <line>845</line>
           <option name="timeStamp" value="13" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/run_nerf.py</url>
-          <line>159</line>
-          <option name="timeStamp" value="107" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/test.py</url>
@@ -135,8 +130,8 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/run_nerf.py</url>
-          <line>558</line>
-          <option name="timeStamp" value="174" />
+          <line>164</line>
+          <option name="timeStamp" value="182" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
