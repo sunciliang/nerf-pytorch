@@ -154,18 +154,15 @@ def render_path(render_poses, render_temperatures, hwf, K, chunk, render_kwargs,
     disps = []
     depths = []
 
-    near,far = render_kwargs['near'],render_kwargs['far']
-    near_far = [near,far]
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
         rgb, disp, acc, depth, _ = render(H, W, K, chunk=chunk, temperatures=render_temperatures[i,:], c2w=c2w[:3,:4], **render_kwargs)
 
-        depth_map, _ = visualize_depth_numpy(depth.cpu().numpy(), near_far)
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
-        depths.append(depth_map)
+        depths.append(depth.cpu().numpy())
         if i==0:
             print(rgb.shape, disp.shape,depth.shape)
 
@@ -848,7 +845,7 @@ def train():
             moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_T{}'.format(expname, i,args.render_T))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
             imageio.mimwrite(moviebase + 'disp.mp4', to8b(disps / np.max(disps)), fps=30, quality=8)
-            imageio.mimwrite(moviebase + 'depth.mp4', to8b(disps / np.max(disps)), fps=30, quality=8)
+            imageio.mimwrite(moviebase + 'depth.mp4', to8b(depths/ np.max(depths)), fps=30, quality=8)
 
             # if args.use_viewdirs:
             #     render_kwargs_test['c2w_staticcam'] = render_poses[0][:3,:4]

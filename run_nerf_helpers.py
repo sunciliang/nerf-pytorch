@@ -97,7 +97,7 @@ class NeRF(nn.Module):
         self.pts_linears = nn.ModuleList(
             [nn.Linear(input_ch, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
 
-        self.k2wb_linears = nn.ModuleList([nn.Linear(input_ch_temperatures, 16), nn.Linear(16, 16), nn.Linear(16, 3)])
+        self.k2wb_linears = nn.ModuleList([nn.Linear(input_ch_temperatures, 16), nn.Linear(16, 16),nn.Linear(16, 16),nn.Linear(16, 16), nn.Linear(16, 3)])
         
         ### Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
         self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W//2)])
@@ -144,7 +144,7 @@ class NeRF(nn.Module):
             for i, l in enumerate(self.k2wb_linears):
                 temperatures = self.k2wb_linears[i](temperatures)
                 temperatures = F.relu(temperatures)
-            # temperatures = temperatures.clamp(0.001,255)
+            temperatures = temperatures.clamp(0.00001,255)
 
             temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
             temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
