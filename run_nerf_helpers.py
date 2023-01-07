@@ -152,10 +152,7 @@ class NeRF(nn.Module):
             temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
 
             rgbs_source = torch.mul(e,temperatures_rgb)
-            
-            # e = e.unsqueeze(1)
-            # rgbs_source = torch.matmul(e,input_temperatures)
-            # rgbs_source = rgbs_source.squeeze(1)
+
             r_source = rgbs_source[:, 0:1]
             g_source = rgbs_source[:, 1:2]
             b_source = rgbs_source[:, 2:3]

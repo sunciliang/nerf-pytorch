@@ -544,6 +544,8 @@ def config_parser():
                         help='random seed for numpy.random.')
     parser.add_argument('--render_T', type=float, default=0.0,
                         help=' use temperatures of the rendered views')
+    parser.add_argument('--render_E', type=float, default=0.0,
+                        help=' use exposure of the rendered views')
     return parser
 
 
@@ -555,12 +557,12 @@ def train():
     # Load data
     K = None
     if args.dataset_type == 'llff':
-        images, poses, bds, render_poses, i_test, temperatures, render_temperatures = load_llff_data(args.datadir, args.factor,
-                                                                  recenter=True, bd_factor=.75,
-                                                                  spherify=args.spherify,use_temperatures=args.render_T)
+        images, poses, bds, render_poses, i_test, temperatures, render_temperatures, exposures, render_exposures = load_llff_data(args.datadir, args.factor,
+                       recenter=True, bd_factor=.75, spherify=args.spherify,use_temperatures=args.render_T,use_exposure=args.render_E)
         hwf = poses[0,:3,-1]
         poses = poses[:,:3,:4]
         temps = temperatures
+        exps = exposures
         print('Loaded llff', images.shape, render_poses.shape, hwf, args.datadir)
         if not isinstance(i_test, list):
             i_test = [i_test]
@@ -651,6 +653,7 @@ def train():
     if args.render_test:
         render_poses = np.array(poses[i_test])
         render_temperatures = np.array(temperatures[i_test])
+        render_exposures = np.array(exposures[i_test])
 
     # Create log dir and copy the config file
     basedir = args.basedir
@@ -680,6 +683,7 @@ def train():
     # Move testing data to GPU
     render_poses = torch.Tensor(render_poses).to(device)
     render_temperatures = torch.Tensor(render_temperatures).to(device)
+    render_exposures = torch.Tensor(render_exposures).to(device)
 
     # Short circuit if only rendering out from trained model
     if args.render_only:
@@ -705,7 +709,8 @@ def train():
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
     use_batching = not args.no_batching
-    temps =  np.tile(temps[:,None,None,:], [1, H, W, 1])
+    temps = np.tile(temps[:,None,None,:], [1, H, W, 1])
+    exps = np.tile(exps[:,None,None,:], [1, H, W, 1])
     if use_batching:
         # For random ray batching
         print('get rays')

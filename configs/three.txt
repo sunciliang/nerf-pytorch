@@ -19,4 +19,5 @@ i_video = 10000
 i_test = 10000
 
 render_T = 5000
+render_E = 1.0
 

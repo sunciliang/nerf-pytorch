@@ -66,6 +66,7 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     poses = poses_arr[:, :-2].reshape([-1, 3, 5]).transpose([1,2,0])
     bds = poses_arr[:, -2:].transpose([1,0])
     temperature = np.load(os.path.join(basedir, 'temperature.npy')).reshape(-1,1)
+    exposure = np.load(os.path.join(basedir, 'exposure.npy')).reshape(-1,1)
 
     
     img0 = [os.path.join(basedir, 'images', f) for f in sorted(os.listdir(os.path.join(basedir, 'images'))) \
@@ -118,7 +119,7 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     imgs = np.stack(imgs, -1)  
     
     print('Loaded image data', imgs.shape, poses[:,-1,0])
-    return poses, bds, imgs, temperature
+    return poses, bds, imgs, temperature, exposure
 
     
             
@@ -298,10 +299,11 @@ def convert_K_to_RGB(colour_temperature):
     return red, green, blue
 
 
-def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=False, path_zflat=False, use_temperatures=5000):
+def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=False,
+                   path_zflat=False, use_temperatures=5000, use_exposure=1.0):
     
 
-    poses, bds, imgs, temperature = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
+    poses, bds, imgs, temperature, exposure = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
     print('Loaded', basedir, bds.min(), bds.max())
 
     
@@ -311,9 +313,12 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     imgs = np.moveaxis(imgs, -1, 0).astype(np.float32)
     images = imgs
     bds = np.moveaxis(bds, -1, 0).astype(np.float32)
+    # normalization temperature and exposure
     temperature = temperature.astype(np.float32) /10000
+    exposure = exposure.astype(np.float32) / 3
 
     print('temperature', temperature.shape)
+    print('exposure', exposure.shape)
     # Rescale if bd_factor is provided
     sc = 1. if bd_factor is None else 1./(bds.min() * bd_factor)
     poses[:,:3,3] *= sc
@@ -360,9 +365,13 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         # Generate poses for spiral path
         render_poses = render_path_spiral(c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=N_views)
         render_temperatures = np.linspace(use_temperatures/10000, use_temperatures/10000, N_views)
+        render_exposures = np.linspace(use_exposure / 3, use_exposure / 3, N_views)
+
 
     render_t = render_temperatures.reshape(-1,1)
     render_t = np.array(render_t).astype(np.float32)
+    render_e = render_exposures.reshape(-1,1)
+    render_e = np.array(render_e).astype(np.float32)
     render_poses = np.array(render_poses).astype(np.float32)
 
 
@@ -377,7 +386,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     images = images.astype(np.float32)
     poses = poses.astype(np.float32)
 
-    return images, poses, bds, render_poses, i_test, temperature, render_t
+    return images, poses, bds, render_poses, i_test, temperature, render_t, exposure, render_e
 
 
 
