@@ -82,7 +82,7 @@ def get_embedder(multires, i=0):
 
 # Model
 class NeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, input_ch_temperatures=1,output_ch=4, skips=[4], use_viewdirs=False):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, input_ch_temperatures=1, input_ch_exposures=1, output_ch=4, skips=[4], use_viewdirs=False):
         """ 
         """
         super(NeRF, self).__init__()
@@ -91,6 +91,7 @@ class NeRF(nn.Module):
         self.input_ch = input_ch
         self.input_ch_views = input_ch_views
         self.input_ch_temperatures = input_ch_temperatures
+        self.input_ch_exposures = input_ch_exposures
         self.skips = skips
         self.use_viewdirs = use_viewdirs
         
@@ -120,7 +121,7 @@ class NeRF(nn.Module):
             self.output_linear = nn.Linear(W, output_ch)
 
     def forward(self, x):
-        input_pts, input_views,input_temperatures = torch.split(x, [self.input_ch, self.input_ch_views, self.input_ch_temperatures], dim=-1)
+        input_pts, input_views, input_temperatures, input_exposures = torch.split(x, [self.input_ch, self.input_ch_views, self.input_ch_temperatures, self.input_ch_exposures], dim=-1)
         h = input_pts
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
