@@ -315,7 +315,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     bds = np.moveaxis(bds, -1, 0).astype(np.float32)
     # normalization temperature and exposure
     temperature = temperature.astype(np.float32) /10000
-    exposure = exposure.astype(np.float32) / 3
+    exposure = exposure.astype(np.float32)
 
     print('temperature', temperature.shape)
     print('exposure', exposure.shape)
@@ -365,7 +365,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
         # Generate poses for spiral path
         render_poses = render_path_spiral(c2w_path, up, rads, focal, zdelta, zrate=.5, rots=N_rots, N=N_views)
         render_temperatures = np.linspace(use_temperatures/10000, use_temperatures/10000, N_views)
-        render_exposures = np.linspace(use_exposure / 3, use_exposure / 3, N_views)
+        render_exposures = np.linspace(use_exposure, use_exposure, N_views)
 
 
     render_t = render_temperatures.reshape(-1,1)

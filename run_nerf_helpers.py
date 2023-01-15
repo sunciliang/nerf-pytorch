@@ -105,6 +105,9 @@ class NeRF(nn.Module):
         self.temperatures_linears_r = nn.ModuleList([nn.Linear(1, W // 2)])
         self.temperatures_linears_g = nn.ModuleList([nn.Linear(1, W // 2)])
         self.temperatures_linears_b = nn.ModuleList([nn.Linear(1, W // 2)])
+        self.exps_linears_r = nn.ModuleList([nn.Linear(1, W // 2)])
+        self.exps_linears_g = nn.ModuleList([nn.Linear(1, W // 2)])
+        self.exps_linears_b = nn.ModuleList([nn.Linear(1, W // 2)])
 
         ### Implementation according to the paper
         # self.views_linears = nn.ModuleList(
@@ -116,6 +119,9 @@ class NeRF(nn.Module):
             self.r_linner = nn.Linear(W // 2, 1)
             self.g_linner = nn.Linear(W // 2, 1)
             self.b_linner = nn.Linear(W // 2, 1)
+            self.r_l_linner = nn.Linear(W // 2, 1)
+            self.b_l_linner = nn.Linear(W // 2, 1)
+            self.g_l_linner = nn.Linear(W // 2, 1)
             self.rgb_linear = nn.Linear(W//2, 3)
         else:
             self.output_linear = nn.Linear(W, output_ch)
@@ -173,7 +179,27 @@ class NeRF(nn.Module):
                 b_source = F.relu(b_source)
             b = self.b_linner(b_source)
 
-            rgb = torch.cat([r, g, b], -1)
+            #exp
+            r_h_s = r + torch.log(input_exposures)
+            g_h_s = g + torch.log(input_exposures)
+            b_h_s = b + torch.log(input_exposures)
+
+            for i, l in enumerate(self.exps_linears_r):
+                r_h_s = self.exps_linears_r[i](r_h_s)
+                r_h_s = F.relu(r_h_s)
+            r_l = self.r_l_linner(r_h_s)
+
+            for i, l in enumerate(self.exps_linears_g):
+                g_h_s = self.exps_linears_g[i](g_h_s)
+                g_h_s = F.relu(g_h_s)
+            g_l = self.g_l_linner(g_h_s)
+
+            for i, l in enumerate(self.exps_linears_b):
+                b_h_s = self.exps_linears_b[i](b_h_s)
+                b_h_s = F.relu(b_h_s)
+            b_l = self.b_l_linner(b_h_s)
+
+            rgb = torch.cat([r_l, g_l, b_l], -1)
 
             outputs = torch.cat([rgb, alpha], -1)
         else:
