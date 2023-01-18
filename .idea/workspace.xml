@@ -43,7 +43,7 @@
       <recent name="E:\GitHub\nerf-py" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.run_nerf">
+  <component name="RunManager" selected="Python.test">
     <configuration name="run_nerf" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="nerf-py" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -94,8 +94,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.run_nerf" />
         <item itemvalue="Python.test" />
+        <item itemvalue="Python.run_nerf" />
       </list>
     </recent_temporary>
   </component>
@@ -125,7 +125,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/test.py</url>
-          <line>125</line>
+          <line>126</line>
           <option name="timeStamp" value="150" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">

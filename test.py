@@ -112,12 +112,13 @@ def convert_K_to_RGB(colour_temperature):
 
 import numpy as np
 tt = []
-key = [5000,5000,5000,5000,5000]
+# key = [5000,5000,5000,5000,5000]
 # key = [2.0,1.0,0.5,0.25,0.125]
-for i in range(175):
+key = [1.0,1.0,1.0,1.0,1.0]
+for i in range(80):
     tt.append(key[i%5])
-np.save('temperature.npy',tt)
-# np.save('exposure.npy',tt)
+#np.save('temperature.npy',tt)
+np.save('exposure.npy',tt)
 # #
 # k=np.load(r'E:\GitHub\nerf-py\temperature.npy')
 # print(k)

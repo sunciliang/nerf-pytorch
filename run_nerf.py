@@ -849,13 +849,13 @@ def train():
             print('Saved checkpoints at', path)
 
         if i%args.i_video==0 and i > 0:
-            videosavedir = os.path.join(basedir, expname, 'videoset_{:06d}_T{}'.format(i,args.render_T))
+            videosavedir = os.path.join(basedir, expname, 'videoset_{:06d}_T{}_E{}'.format(i, args.render_T, args.render_E))
             os.makedirs(videosavedir, exist_ok=True)
             # Turn on testing mode
             with torch.no_grad():
                 rgbs, disps, depths = render_path(render_poses, render_temperatures, render_exposures, hwf, K, args.chunk, render_kwargs_test,savedir=videosavedir)
             print('Done, saving', rgbs.shape, disps.shape)
-            moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_T{}'.format(expname, i,args.render_T))
+            moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_T{}_E{}'.format(expname, i, args.render_T, args.render_E))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
             imageio.mimwrite(moviebase + 'disp.mp4', to8b(disps / np.max(disps)), fps=30, quality=8)
             imageio.mimwrite(moviebase + 'depth.mp4', to8b(depths/ np.max(depths)), fps=30, quality=8)
