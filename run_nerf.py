@@ -576,7 +576,7 @@ def train():
             # for i in range(0,images.shape[0] // (exp_num*2) + 1):
             for i in range(0, images.shape[0] // (exp_num * 1) + 1):
                 step = i*exp_num*1
-                # i_train.append(np.random.choice([0 + step, 3 + step], 1, replace=False))
+                # i_train.append(np.random.choice([0 + step, 2 + step, 4 + step], 1, replace=False))
                 i_train.append(np.random.choice([0+step, 1+step, 2+step, 3+step, 4+step], 1, replace=False))
             i_train = np.sort(np.array(i_train).reshape([-1]))
             i_test = np.array([i for i in np.arange(int(images.shape[0])) if (i not in i_train)])
