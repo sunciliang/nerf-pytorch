@@ -160,24 +160,24 @@ class NeRF(nn.Module):
 
             rgbs_source = torch.mul(e,temperatures_rgb)
 
-            r_source = rgbs_source[:, 0:1]
-            g_source = rgbs_source[:, 1:2]
-            b_source = rgbs_source[:, 2:3]
+            r = r_source = rgbs_source[:, 0:1]
+            g = g_source = rgbs_source[:, 1:2]
+            b = b_source = rgbs_source[:, 2:3]
 
-            for i, l in enumerate(self.temperatures_linears_r):
-                r_source = self.temperatures_linears_r[i](r_source)
-                r_source = F.relu(r_source)
-            r = self.r_linner(r_source)
-
-            for i, l in enumerate(self.temperatures_linears_g):
-                g_source = self.temperatures_linears_g[i](g_source)
-                g_source = F.relu(g_source)
-            g = self.g_linner(g_source)
-
-            for i, l in enumerate(self.temperatures_linears_b):
-                b_source = self.temperatures_linears_b[i](b_source)
-                b_source = F.relu(b_source)
-            b = self.b_linner(b_source)
+            # for i, l in enumerate(self.temperatures_linears_r):
+            #     r_source = self.temperatures_linears_r[i](r_source)
+            #     r_source = F.relu(r_source)
+            # r = self.r_linner(r_source)
+            #
+            # for i, l in enumerate(self.temperatures_linears_g):
+            #     g_source = self.temperatures_linears_g[i](g_source)
+            #     g_source = F.relu(g_source)
+            # g = self.g_linner(g_source)
+            #
+            # for i, l in enumerate(self.temperatures_linears_b):
+            #     b_source = self.temperatures_linears_b[i](b_source)
+            #     b_source = F.relu(b_source)
+            # b = self.b_linner(b_source)
 
             #exp
             r_h_s = r + torch.log(input_exposures)
