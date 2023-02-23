@@ -34,7 +34,7 @@ def batchify(fn, chunk):
     return ret
 
 
-def run_network(inputs, viewdirs, temperatures, exposures, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
+def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'.
     """
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
@@ -45,13 +45,14 @@ def run_network(inputs, viewdirs, temperatures, exposures, fn, embed_fn, embeddi
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
 
-        input_temperatures = torch.broadcast_to(temperatures[:,None,:], [temperatures.shape[0], inputs.shape[1], 1])
-        input_temperatures_flat = torch.reshape(input_temperatures, [-1, input_temperatures.shape[-1]])
+        # input_temperatures = torch.broadcast_to(temperatures[:,None,:], [temperatures.shape[0], inputs.shape[1], 1])
+        # input_temperatures_flat = torch.reshape(input_temperatures, [-1, input_temperatures.shape[-1]])
+        #
+        # input_exposures = torch.broadcast_to(exposures[:, None, :], [exposures.shape[0], inputs.shape[1], 1])
+        # input_exposures_flat = torch.reshape(input_exposures, [-1, input_exposures.shape[-1]])
 
-        input_exposures = torch.broadcast_to(exposures[:, None, :], [exposures.shape[0], inputs.shape[1], 1])
-        input_exposures_flat = torch.reshape(input_exposures, [-1, input_exposures.shape[-1]])
-
-        embedded = torch.cat([embedded, embedded_dirs, input_temperatures_flat, input_exposures_flat], -1)
+        # embedded = torch.cat([embedded, embedded_dirs, input_temperatures_flat, input_exposures_flat], -1)
+        embedded = torch.cat([embedded, embedded_dirs], -1)
 
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = torch.reshape(outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]])
@@ -132,6 +133,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     near, far = near * torch.ones_like(rays_d[...,:1]), far * torch.ones_like(rays_d[...,:1])
     rays = torch.cat([rays_o, rays_d, near, far], -1)
     if use_viewdirs:
+        # rays = torch.cat([rays, viewdirs], -1)
         rays = torch.cat([rays, viewdirs, temperatures, exposures], -1)
 
     # Render and reshape
@@ -213,8 +215,10 @@ def create_nerf(args):
                           input_ch=input_ch, output_ch=output_ch, skips=skips,
                           input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
         grad_vars += list(model_fine.parameters())
+    ISP_model = ISP(W=args.netwidth_fine)
+    grad_vars += list(ISP_model.parameters())
 
-    network_query_fn = lambda inputs, viewdirs, temperatures, exposures, network_fn : run_network(inputs, viewdirs, temperatures, exposures, network_fn,
+    network_query_fn = lambda inputs, viewdirs, network_fn : run_network(inputs, viewdirs, network_fn,
                                                                 embed_fn=embed_fn,
                                                                 embeddirs_fn=embeddirs_fn,
                                                                 netchunk=args.netchunk)
@@ -252,6 +256,7 @@ def create_nerf(args):
 
     render_kwargs_train = {
         'network_query_fn' : network_query_fn,
+        'ISP_model' : ISP_model,
         'perturb' : args.perturb,
         'N_importance' : args.N_importance,
         'network_fine' : model_fine,
@@ -275,7 +280,7 @@ def create_nerf(args):
     return render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer
 
 
-def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=False):
+def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0,white_bkgd=False, pytest=False):
     """Transforms model's predictions to semantically meaningful values.
     Args:
         raw: [num_rays, num_samples along ray, 4]. Prediction from model.
@@ -324,6 +329,7 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
 def render_rays(ray_batch,
                 network_fn,
                 network_query_fn,
+                ISP_model,
                 N_samples,
                 retraw=False,
                 lindisp=False,
@@ -400,9 +406,10 @@ def render_rays(ray_batch,
 
 
 #     raw = run_network(pts)
-    raw = network_query_fn(pts, viewdirs, temperatures, exposures, network_fn)
-    rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
-
+#     raw = network_query_fn(pts, viewdirs, temperatures, exposures, network_fn)
+    raw = network_query_fn(pts, viewdirs, network_fn)
+    rgb_map_s, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
+    rgb_map = ISP_model(rgb_map_s,exposures,temperatures)
     if N_importance > 0:
 
         rgb_map_0, disp_map_0, acc_map_0, depth_map0 = rgb_map, disp_map, acc_map, depth_map
@@ -416,9 +423,10 @@ def render_rays(ray_batch,
 
         run_fn = network_fn if network_fine is None else network_fine
 #         raw = run_network(pts, fn=run_fn)
-        raw = network_query_fn(pts, viewdirs, temperatures, exposures, run_fn)
+        raw = network_query_fn(pts, viewdirs, run_fn)
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
+        rgb_map = ISP_model(rgb_map_s, exposures, temperatures)
 
     ret = {'rgb_map' : rgb_map, 'disp_map' : disp_map, 'acc_map' : acc_map,'depth_map':depth_map}
     if retraw:
@@ -813,16 +821,16 @@ def train():
                                                 **render_kwargs_train)
 
         optimizer.zero_grad()
-        unit_exp_loss = point_constraint(render_kwargs_train['network_fn'], 0.5)
+        # unit_exp_loss = point_constraint(render_kwargs_train['network_fn'], 0.5)
         img_loss = img2mse(rgb, target_s)
         trans = extras['raw'][...,-1]
-        loss = img_loss + unit_exp_loss*0.5
+        loss = img_loss
         psnr = mse2psnr(img_loss)
 
         if 'rgb0' in extras:
             img_loss0 = img2mse(extras['rgb0'], target_s)
-            unit_exp_loss_f = point_constraint(render_kwargs_train['network_fine'], 0.5)
-            loss = loss + img_loss0 +unit_exp_loss_f *0.5
+            # unit_exp_loss_f = point_constraint(render_kwargs_train['network_fine'], 0.5)
+            loss = loss + img_loss0
             psnr0 = mse2psnr(img_loss0)
 
         loss.backward()

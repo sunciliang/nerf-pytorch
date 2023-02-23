@@ -99,16 +99,16 @@ class NeRF(nn.Module):
         self.pts_linears = nn.ModuleList(
             [nn.Linear(input_ch, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
 
-        self.k2wb_linears = nn.ModuleList([nn.Linear(input_ch_temperatures, 16), nn.Linear(16, 16),nn.Linear(16, 16),nn.Linear(16, 16), nn.Linear(16, 3)])
+        # self.k2wb_linears = nn.ModuleList([nn.Linear(input_ch_temperatures, 16), nn.Linear(16, 16),nn.Linear(16, 16),nn.Linear(16, 16), nn.Linear(16, 3)])
         
         ### Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
         self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W//2)])
-        self.temperatures_linears_r = nn.ModuleList([nn.Linear(1, W // 2)])
-        self.temperatures_linears_g = nn.ModuleList([nn.Linear(1, W // 2)])
-        self.temperatures_linears_b = nn.ModuleList([nn.Linear(1, W // 2)])
-        self.exps_linears_r = nn.ModuleList([nn.Linear(1, W // 2)])
-        self.exps_linears_g = nn.ModuleList([nn.Linear(1, W // 2)])
-        self.exps_linears_b = nn.ModuleList([nn.Linear(1, W // 2)])
+        # self.temperatures_linears_r = nn.ModuleList([nn.Linear(1, W // 2)])
+        # self.temperatures_linears_g = nn.ModuleList([nn.Linear(1, W // 2)])
+        # self.temperatures_linears_b = nn.ModuleList([nn.Linear(1, W // 2)])
+        # self.exps_linears_r = nn.ModuleList([nn.Linear(1, W // 2)])
+        # self.exps_linears_g = nn.ModuleList([nn.Linear(1, W // 2)])
+        # self.exps_linears_b = nn.ModuleList([nn.Linear(1, W // 2)])
 
         ### Implementation according to the paper
         # self.views_linears = nn.ModuleList(
@@ -128,7 +128,8 @@ class NeRF(nn.Module):
             self.output_linear = nn.Linear(W, output_ch)
 
     def forward(self, x):
-        input_pts, input_views, input_temperatures, input_exposures = torch.split(x, [self.input_ch, self.input_ch_views, self.input_ch_temperatures, self.input_ch_exposures], dim=-1)
+        # input_pts, input_views, input_temperatures, input_exposures = torch.split(x, [self.input_ch, self.input_ch_views, self.input_ch_temperatures, self.input_ch_exposures], dim=-1)
+        input_pts, input_views = torch.split(x,[self.input_ch, self.input_ch_views], dim=-1)
         h = input_pts
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
@@ -147,67 +148,67 @@ class NeRF(nn.Module):
 
             e = self.rgb_linear(h)
 
-            if not self.render_sc:
-            #k2t
-                temperatures = input_temperatures
-                for i, l in enumerate(self.k2wb_linears):
-                    temperatures = self.k2wb_linears[i](temperatures)
-                    temperatures = F.relu(temperatures)
-                temperatures = temperatures.clamp(0.00001,255)
+            # if not self.render_sc:
+            # #k2t
+            #     temperatures = input_temperatures
+            #     for i, l in enumerate(self.k2wb_linears):
+            #         temperatures = self.k2wb_linears[i](temperatures)
+            #         temperatures = F.relu(temperatures)
+            #     temperatures = temperatures.clamp(0.00001,255)
+            #
+            #     temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
+            #     temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
+            #     temperatures_b = temperatures[:, 2:3] / temperatures[:, 1:2]
+            #     temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
+            #
+            #     rgbs_source = torch.mul(e,temperatures_rgb)
+            #
+            #     r = r_source = rgbs_source[:, 0:1]
+            #     g = g_source = rgbs_source[:, 1:2]
+            #     b = b_source = rgbs_source[:, 2:3]
+            #
+            #     # for i, l in enumerate(self.temperatures_linears_r):
+            #     #     r_source = self.temperatures_linears_r[i](r_source)
+            #     #     r_source = F.relu(r_source)
+            #     # r = self.r_linner(r_source)
+            #     #
+            #     # for i, l in enumerate(self.temperatures_linears_g):
+            #     #     g_source = self.temperatures_linears_g[i](g_source)
+            #     #     g_source = F.relu(g_source)
+            #     # g = self.g_linner(g_source)
+            #     #
+            #     # for i, l in enumerate(self.temperatures_linears_b):
+            #     #     b_source = self.temperatures_linears_b[i](b_source)
+            #     #     b_source = F.relu(b_source)
+            #     # b = self.b_linner(b_source)
+            #
+            #     #exp
+            #     r_h_s = r + torch.log(input_exposures)
+            #     g_h_s = g + torch.log(input_exposures)
+            #     b_h_s = b + torch.log(input_exposures)
+            # else :
+            #     r_h_s = e[:, 0:1]
+            #     g_h_s = e[:, 1:2]
+            #     b_h_s = e[:, 2:3]
+            #
+            # for i, l in enumerate(self.exps_linears_r):
+            #     r_h_s = self.exps_linears_r[i](r_h_s)
+            #     r_h_s = F.relu(r_h_s)
+            # r_l = self.r_l_linner(r_h_s)
+            #
+            # for i, l in enumerate(self.exps_linears_g):
+            #     g_h_s = self.exps_linears_g[i](g_h_s)
+            #     g_h_s = F.relu(g_h_s)
+            # g_l = self.g_l_linner(g_h_s)
+            #
+            # for i, l in enumerate(self.exps_linears_b):
+            #     b_h_s = self.exps_linears_b[i](b_h_s)
+            #     b_h_s = F.relu(b_h_s)
+            # b_l = self.b_l_linner(b_h_s)
 
-                temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
-                temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
-                temperatures_b = temperatures[:, 2:3] / temperatures[:, 1:2]
-                temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
+            # rgb = torch.cat([r_l, g_l, b_l], -1)
 
-                rgbs_source = torch.mul(e,temperatures_rgb)
-
-                r = r_source = rgbs_source[:, 0:1]
-                g = g_source = rgbs_source[:, 1:2]
-                b = b_source = rgbs_source[:, 2:3]
-
-                # for i, l in enumerate(self.temperatures_linears_r):
-                #     r_source = self.temperatures_linears_r[i](r_source)
-                #     r_source = F.relu(r_source)
-                # r = self.r_linner(r_source)
-                #
-                # for i, l in enumerate(self.temperatures_linears_g):
-                #     g_source = self.temperatures_linears_g[i](g_source)
-                #     g_source = F.relu(g_source)
-                # g = self.g_linner(g_source)
-                #
-                # for i, l in enumerate(self.temperatures_linears_b):
-                #     b_source = self.temperatures_linears_b[i](b_source)
-                #     b_source = F.relu(b_source)
-                # b = self.b_linner(b_source)
-
-                #exp
-                r_h_s = r + torch.log(input_exposures)
-                g_h_s = g + torch.log(input_exposures)
-                b_h_s = b + torch.log(input_exposures)
-            else :
-                r_h_s = e[:, 0:1]
-                g_h_s = e[:, 1:2]
-                b_h_s = e[:, 2:3]
-
-            for i, l in enumerate(self.exps_linears_r):
-                r_h_s = self.exps_linears_r[i](r_h_s)
-                r_h_s = F.relu(r_h_s)
-            r_l = self.r_l_linner(r_h_s)
-
-            for i, l in enumerate(self.exps_linears_g):
-                g_h_s = self.exps_linears_g[i](g_h_s)
-                g_h_s = F.relu(g_h_s)
-            g_l = self.g_l_linner(g_h_s)
-
-            for i, l in enumerate(self.exps_linears_b):
-                b_h_s = self.exps_linears_b[i](b_h_s)
-                b_h_s = F.relu(b_h_s)
-            b_l = self.b_l_linner(b_h_s)
-
-            rgb = torch.cat([r_l, g_l, b_l], -1)
-
-            outputs = torch.cat([rgb, alpha], -1)
+            outputs = torch.cat([e, alpha], -1)
         else:
             outputs = self.output_linear(h)
 
@@ -242,9 +243,74 @@ class NeRF(nn.Module):
         self.alpha_linear.weight.data = torch.from_numpy(np.transpose(weights[idx_alpha_linear]))
         self.alpha_linear.bias.data = torch.from_numpy(np.transpose(weights[idx_alpha_linear+1]))
 
+class ISP(nn.Module):
+    def __init__(self, W=256, input_ch_temperatures=1, input_ch_exposures=1,input_ch_rgb=3):
 
+        super(ISP, self).__init__()
+        self.W = W
+        self.input_ch_rgb = input_ch_rgb
+        self.input_ch_temperatures = input_ch_temperatures
+        self.input_ch_exposures = input_ch_exposures
 
-# Ray helpers
+        self.k2wb_linears = nn.ModuleList(
+            [nn.Linear(input_ch_temperatures, 16), nn.Linear(16, 16), nn.Linear(16, 16), nn.Linear(16, 16),
+             nn.Linear(16, 3)])
+        self.outr_linears = nn.ModuleList([nn.Linear(1, W // 2), nn.Linear(W // 2, W // 2)])
+        self.outg_linears = nn.ModuleList([nn.Linear(1, W // 2), nn.Linear(W // 2, W // 2)])
+        self.outb_linears = nn.ModuleList([nn.Linear(1, W // 2), nn.Linear(W // 2, W // 2)])
+
+        self.outr_linears1 = nn.Linear(W // 2, 1)
+        self.outg_linears1 = nn.Linear(W // 2, 1)
+        self.outb_linears1 = nn.Linear(W // 2, 1)
+
+    def forward(self, input_rgb, input_exposures, input_temperatures):
+
+        # input_rgb, input_exposures, input_temperatures = torch.split(x, [self.input_ch_rgb, self.input_ch_exposures, self.input_ch_temperatures], dim=-1)
+
+        # k2t
+        temperatures = input_temperatures
+        for i, l in enumerate(self.k2wb_linears):
+            temperatures = self.k2wb_linears[i](temperatures)
+            temperatures = F.relu(temperatures)
+        temperatures = temperatures.clamp(0.1,10)
+
+        temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
+        temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
+        temperatures_b = temperatures[:, 2:3] / temperatures[:, 1:2]
+        temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
+
+        rgbs_wb = torch.mul(input_rgb,temperatures_rgb)
+
+        r = r_source = rgbs_wb[:, 0:1]
+        g = g_source = rgbs_wb[:, 1:2]
+        b = b_source = rgbs_wb[:, 2:3]
+
+        r_e = r + torch.log(input_exposures)
+        g_e = g + torch.log(input_exposures)
+        b_e = b + torch.log(input_exposures)
+
+        for i, l in enumerate(self.outr_linears):
+            r_e = self.outr_linears[i](r_e)
+            r_e = F.relu(r_e)
+        r_result = self.outr_linears1(r_e)
+        r_result = F.sigmoid(r_result)
+
+        for i, l in enumerate(self.outg_linears):
+            g_e = self.outg_linears[i](g_e)
+            g_e = F.relu(g_e)
+        g_result = self.outg_linears1(g_e)
+        g_result = F.sigmoid(g_result)
+        for i, l in enumerate(self.outb_linears):
+            b_e = self.outb_linears[i](b_e)
+            b_e = F.relu(b_e)
+        b_result = self.outb_linears1(b_e)
+        b_result = F.sigmoid(b_result)
+
+        out_rgb = torch.cat([r_result, g_result, b_result], -1)
+
+        return out_rgb
+
+    # Ray helpers
 def get_rays(H, W, K, c2w):
     i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))  # pytorch's meshgrid has indexing='ij'
     i = i.t()
