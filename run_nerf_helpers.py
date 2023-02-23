@@ -147,18 +147,18 @@ class NeRF(nn.Module):
 
             e = self.rgb_linear(h)
 
-            if not self.render_sc:
+            if self.render_sc:
             #k2t
                 temperatures = input_temperatures
                 for i, l in enumerate(self.k2wb_linears):
                     temperatures = self.k2wb_linears[i](temperatures)
                     temperatures = F.relu(temperatures)
-                temperatures = temperatures.clamp(0.00001,255)
+                temperatures_rgb = temperatures.clamp(0.5,1.5)
 
-                temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
-                temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
-                temperatures_b = temperatures[:, 2:3] / temperatures[:, 1:2]
-                temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
+                # temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
+                # temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
+                # temperatures_b = temperatures[:, 2:3] / temperatures[:, 1:2]
+                # temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
 
                 rgbs_source = torch.mul(e,temperatures_rgb)
 
