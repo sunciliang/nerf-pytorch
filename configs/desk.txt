@@ -1,11 +1,11 @@
-expname = luckycat5Exp16Vtest
+expname = desktest
 basedir = ./logs
-datadir = ./data/luckycatMix
+datadir = ./data/desk
 dataset_type = llff
 
 #no_batching = True
 
-factor = 8
+factor = 1 #8
 llffhold = 8 #0
 
 N_rand = 2048
@@ -16,11 +16,10 @@ use_viewdirs = True
 raw_noise_std = 1e0
 
 i_video = 50000
-i_test = 50000
+i_test = 10000
 
-render_T = 5000
+render_T = 3500
 render_E = 0.5
 
 render_sc
-
 

@@ -553,6 +553,8 @@ def config_parser():
                         help=' use temperatures of the rendered views')
     parser.add_argument('--render_E', type=float, default=0.0,
                         help=' use exposure of the rendered views')
+    parser.add_argument('--render_sc', action='store_true',
+                        help=' render a views')
     return parser
 
 
@@ -811,14 +813,16 @@ def train():
                                                 **render_kwargs_train)
 
         optimizer.zero_grad()
+        unit_exp_loss = point_constraint(render_kwargs_train['network_fn'], 0.5)
         img_loss = img2mse(rgb, target_s)
         trans = extras['raw'][...,-1]
-        loss = img_loss
+        loss = img_loss + unit_exp_loss*0.5
         psnr = mse2psnr(img_loss)
 
         if 'rgb0' in extras:
             img_loss0 = img2mse(extras['rgb0'], target_s)
-            loss = loss + img_loss0
+            unit_exp_loss_f = point_constraint(render_kwargs_train['network_fine'], 0.5)
+            loss = loss + img_loss0 +unit_exp_loss_f *0.5
             psnr0 = mse2psnr(img_loss0)
 
         loss.backward()
@@ -849,7 +853,10 @@ def train():
             print('Saved checkpoints at', path)
 
         if i%args.i_video==0 and i > 0:
-            videosavedir = os.path.join(basedir, expname, 'videoset_{:06d}_T{}_E{}'.format(i, args.render_T, args.render_E))
+            if args.render_sc:
+                videosavedir = os.path.join(basedir, expname,'videoset_source')
+            else:
+                videosavedir = os.path.join(basedir, expname, 'videoset_{:06d}_T{}_E{}'.format(i, args.render_T, args.render_E))
             os.makedirs(videosavedir, exist_ok=True)
             # Turn on testing mode
             with torch.no_grad():
