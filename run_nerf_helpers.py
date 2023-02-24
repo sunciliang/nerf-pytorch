@@ -313,7 +313,7 @@ class ISP(nn.Module):
 
         # out_rgb = torch.cat([r_result, g_result, b_result], -1)
         out_rgb = torch.cat([r_e, g_e, b_e], -1)
-        # out_rgb = out_rgb ** (1. / 2.2)
+        out_rgb = out_rgb ** (1. / 2.2)
 
 
         return out_rgb
