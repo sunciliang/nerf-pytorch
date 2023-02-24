@@ -1,4 +1,4 @@
-expname = three5Exp16Vtest_t1
+expname = three5Exp16Vtest_0_3mlp_nolater
 basedir = ./logs
 datadir = ./data/threeMix
 dataset_type = llff
@@ -15,8 +15,8 @@ N_importance = 64
 use_viewdirs = True
 raw_noise_std = 1e0
 
-i_video = 10000
-i_test = 10000
+i_video = 20000
+i_test = 5000
 
 render_T = 5000
 render_E = 1.0

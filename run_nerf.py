@@ -59,12 +59,12 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
     return outputs
 
 
-def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
+def batchify_rays(rays_flat,start_isp, no_ISP=False, chunk=1024*32,  **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
     """
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], **kwargs)
+        ret = render_rays(rays_flat[i:i+chunk],start_isp,no_ISP, **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -74,7 +74,7 @@ def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
     return all_ret
 
 
-def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
+def render(H, W, K,start_isp,no_ISP=False, chunk=1024*32, rays=None, c2w=None, ndc=True,
                   near=0., far=1.,temperatures=None, exposures=None,
                   use_viewdirs=False, c2w_staticcam=None,
                   **kwargs):
@@ -137,7 +137,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
         rays = torch.cat([rays, viewdirs, temperatures, exposures], -1)
 
     # Render and reshape
-    all_ret = batchify_rays(rays, chunk, **kwargs)
+    all_ret = batchify_rays(rays,start_isp, no_ISP,chunk, **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)
@@ -148,7 +148,7 @@ def render(H, W, K, chunk=1024*32, rays=None, c2w=None, ndc=True,
     return ret_list + [ret_dict]
 
 
-def render_path(render_poses, render_temperatures, render_exposures, hwf, K, chunk, render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
+def render_path(render_poses, render_temperatures, render_exposures,start_iter, hwf, K, chunk, no_ISP,render_kwargs, gt_imgs=None, savedir=None, render_factor=0):
 
     H, W, focal = hwf
 
@@ -166,7 +166,7 @@ def render_path(render_poses, render_temperatures, render_exposures, hwf, K, chu
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
-        rgb, disp, acc, depth, _ = render(H, W, K, chunk=chunk, temperatures=render_temperatures[i,:], exposures=render_exposures[i,:], c2w=c2w[:3,:4], **render_kwargs)
+        rgb, disp, acc, depth, _ = render(H, W, K, start_iter, no_ISP, chunk=chunk, temperatures=render_temperatures[i,:], exposures=render_exposures[i,:], c2w=c2w[:3,:4], **render_kwargs)
 
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
@@ -224,7 +224,8 @@ def create_nerf(args):
                                                                 netchunk=args.netchunk)
 
     # Create optimizer
-    optimizer = torch.optim.Adam(params=grad_vars, lr=args.lrate, betas=(0.9, 0.999))
+    optimizer = torch.optim.Adam(params=grad_vars, lr=args.lrate, betas=(0.9, 0.999)) # 0.0005
+    # optimizer_isp = torch.optim.Adam(params=grad_isp_vars, lr=args.lrate, betas=(0.9, 0.999))
 
     start = 0
     basedir = args.basedir
@@ -246,9 +247,11 @@ def create_nerf(args):
 
         start = ckpt['global_step']
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        # optimizer_isp.load_state_dict(ckpt['optimizer_isp_state_dict'])
 
         # Load model
         model.load_state_dict(ckpt['network_fn_state_dict'])
+        ISP_model.load_state_dict(ckpt['ISP_dict_state'])
         if model_fine is not None:
             model_fine.load_state_dict(ckpt['network_fine_state_dict'])
 
@@ -277,7 +280,7 @@ def create_nerf(args):
     render_kwargs_test['perturb'] = False
     render_kwargs_test['raw_noise_std'] = 0.
 
-    return render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer
+    return render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer #, optimizer_isp
 
 
 def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0,white_bkgd=False, pytest=False):
@@ -327,6 +330,8 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0,white_bkgd=False, pytest=Fa
 
 
 def render_rays(ray_batch,
+                start_isp,
+                no_ISP,
                 network_fn,
                 network_query_fn,
                 ISP_model,
@@ -339,7 +344,8 @@ def render_rays(ray_batch,
                 white_bkgd=False,
                 raw_noise_std=0.,
                 verbose=False,
-                pytest=False):
+                pytest=False,
+                ):
     """Volumetric rendering.
     Args:
       ray_batch: array of shape [batch_size, ...]. All information necessary
@@ -409,7 +415,13 @@ def render_rays(ray_batch,
 #     raw = network_query_fn(pts, viewdirs, temperatures, exposures, network_fn)
     raw = network_query_fn(pts, viewdirs, network_fn)
     rgb_map_s, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
-    rgb_map = ISP_model(rgb_map_s,exposures,temperatures)
+    if not no_ISP:
+        if start_isp >= 0:
+            rgb_map = ISP_model(rgb_map_s,exposures,temperatures)
+        else:
+            rgb_map = rgb_map_s
+    else :
+        rgb_map =rgb_map_s
     if N_importance > 0:
 
         rgb_map_0, disp_map_0, acc_map_0, depth_map0 = rgb_map, disp_map, acc_map, depth_map
@@ -425,8 +437,15 @@ def render_rays(ray_batch,
 #         raw = run_network(pts, fn=run_fn)
         raw = network_query_fn(pts, viewdirs, run_fn)
 
-        rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
-        rgb_map = ISP_model(rgb_map_s, exposures, temperatures)
+        rgb_map_s, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
+        # rgb_map = ISP_model(rgb_map_s, exposures, temperatures)
+        if not no_ISP:
+            if start_isp >= 0:
+                rgb_map = ISP_model(rgb_map_s, exposures, temperatures)
+            else:
+                rgb_map = rgb_map_s
+        else:
+            rgb_map = rgb_map_s
 
     ret = {'rgb_map' : rgb_map, 'disp_map' : disp_map, 'acc_map' : acc_map,'depth_map':depth_map}
     if retraw:
@@ -816,11 +835,12 @@ def train():
                 target_s = target[select_coords[:, 0], select_coords[:, 1]]  # (N_rand, 3)
 
         #####  Core optimization loop  #####
-        rgb, disp, acc, depth, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays, temperatures=batch_temperatures,
+        rgb, disp, acc, depth, extras = render(H, W, K, i, chunk=args.chunk, rays=batch_rays, temperatures=batch_temperatures,
                                                 exposures=batch_exposures, verbose=i < 10, retraw=True,
                                                 **render_kwargs_train)
 
         optimizer.zero_grad()
+        # optimizer_isp.zero_grad()
         # unit_exp_loss = point_constraint(render_kwargs_train['network_fn'], 0.5)
         img_loss = img2mse(rgb, target_s)
         trans = extras['raw'][...,-1]
@@ -835,6 +855,7 @@ def train():
 
         loss.backward()
         optimizer.step()
+        # optimizer_isp.step()
 
         # NOTE: IMPORTANT!
         ###   update learning rate   ###
@@ -843,6 +864,12 @@ def train():
         new_lrate = args.lrate * (decay_rate ** (global_step / decay_steps))
         for param_group in optimizer.param_groups:
             param_group['lr'] = new_lrate
+
+        # decay_rate = 0.1
+        # decay_steps = args.lrate_decay * 1000
+        # new_lrate = args.lrate * (decay_rate ** (global_step / decay_steps))
+        # for param_group in optimizer_isp.param_groups:
+        #     param_group['lr'] = new_lrate
         ################################
 
         dt = time.time()-time0
@@ -857,6 +884,8 @@ def train():
                 'network_fn_state_dict': render_kwargs_train['network_fn'].state_dict(),
                 'network_fine_state_dict': render_kwargs_train['network_fine'].state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
+                # 'optimizer_isp_state_dict':optimizer_isp.state_dict(),
+                'ISP_dict_state':render_kwargs_train['ISP_model'].state_dict(),
             }, path)
             print('Saved checkpoints at', path)
 
@@ -868,7 +897,7 @@ def train():
             os.makedirs(videosavedir, exist_ok=True)
             # Turn on testing mode
             with torch.no_grad():
-                rgbs, disps, depths = render_path(render_poses, render_temperatures, render_exposures, hwf, K, args.chunk, render_kwargs_test,savedir=videosavedir)
+                rgbs, disps, depths = render_path(render_poses, render_temperatures, render_exposures,i, hwf, K, args.chunk,args.render_sc, render_kwargs_test,savedir=videosavedir)
             print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(basedir, expname, '{}_spiral_{:06d}_T{}_E{}'.format(expname, i, args.render_T, args.render_E))
             imageio.mimwrite(moviebase + 'rgb.mp4', to8b(rgbs), fps=30, quality=8)
@@ -885,9 +914,13 @@ def train():
         if i%args.i_testset==0 and i > 0:
             testsavedir = os.path.join(basedir, expname, 'testset_{:06d}'.format(i))
             os.makedirs(testsavedir, exist_ok=True)
+            testsavedir1 = os.path.join(testsavedir,'benzhen')
+            os.makedirs(testsavedir1, exist_ok=True)
             print('test poses shape', poses[i_test].shape)
             with torch.no_grad():
-                render_path(torch.Tensor(poses[i_test]).to(device), torch.Tensor(temperatures[i_test]).to(device), torch.Tensor(exposures[i_test]).to(device), hwf, K, args.chunk, render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
+                render_path(torch.Tensor(poses[i_test]).to(device), torch.Tensor(temperatures[i_test]).to(device), torch.Tensor(exposures[i_test]).to(device),i, hwf, K, args.chunk, args.render_sc,render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
+            with torch.no_grad():
+                render_path(torch.Tensor(poses[i_test]).to(device), torch.Tensor(temperatures[i_test]).to(device), torch.Tensor(exposures[i_test]).to(device),i, hwf, K, args.chunk, True,render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir1)
             print('Saved test set')
 
 

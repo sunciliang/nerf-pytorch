@@ -253,7 +253,7 @@ class ISP(nn.Module):
         self.input_ch_exposures = input_ch_exposures
 
         self.k2wb_linears = nn.ModuleList(
-            [nn.Linear(input_ch_temperatures, 16), nn.Linear(16, 16), nn.Linear(16, 16), nn.Linear(16, 16),
+            [nn.Linear(input_ch_temperatures, 32), nn.Linear(32, 16),
              nn.Linear(16, 3)])
         self.outr_linears = nn.ModuleList([nn.Linear(1, W // 2), nn.Linear(W // 2, W // 2)])
         self.outg_linears = nn.ModuleList([nn.Linear(1, W // 2), nn.Linear(W // 2, W // 2)])
@@ -271,13 +271,17 @@ class ISP(nn.Module):
         temperatures = input_temperatures
         for i, l in enumerate(self.k2wb_linears):
             temperatures = self.k2wb_linears[i](temperatures)
-            temperatures = F.relu(temperatures)
-        temperatures = temperatures.clamp(0.1,10)
-
-        temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
-        temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
-        temperatures_b = temperatures[:, 2:3] / temperatures[:, 1:2]
-        temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
+            if i == 2:
+                temperatures = F.sigmoid(temperatures)*2
+            else:
+                temperatures = F.relu(temperatures)
+        # temperatures = temperatures.clamp(0.01, 255)
+        #
+        # temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
+        # temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
+        # temperatures_b = temperatures[:, 2:3] / temperatures[:, 1:2]
+        # temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
+        temperatures_rgb = temperatures
 
         rgbs_wb = torch.mul(input_rgb,temperatures_rgb)
 
@@ -289,24 +293,28 @@ class ISP(nn.Module):
         g_e = g + torch.log(input_exposures)
         b_e = b + torch.log(input_exposures)
 
-        for i, l in enumerate(self.outr_linears):
-            r_e = self.outr_linears[i](r_e)
-            r_e = F.relu(r_e)
-        r_result = self.outr_linears1(r_e)
-        r_result = F.sigmoid(r_result)
+        # for i, l in enumerate(self.outr_linears):
+        #     r_e = self.outr_linears[i](r_e)
+        #     r_e = F.relu(r_e)
+        # r_result = self.outr_linears1(r_e)
+        # r_result = F.sigmoid(r_result)
+        #
+        # for i, l in enumerate(self.outg_linears):
+        #     g_e = self.outg_linears[i](g_e)
+        #     g_e = F.relu(g_e)
+        # g_result = self.outg_linears1(g_e)
+        # g_result = F.sigmoid(g_result)
+        #
+        # for i, l in enumerate(self.outb_linears):
+        #     b_e = self.outb_linears[i](b_e)
+        #     b_e = F.relu(b_e)
+        # b_result = self.outb_linears1(b_e)
+        # b_result = F.sigmoid(b_result)
 
-        for i, l in enumerate(self.outg_linears):
-            g_e = self.outg_linears[i](g_e)
-            g_e = F.relu(g_e)
-        g_result = self.outg_linears1(g_e)
-        g_result = F.sigmoid(g_result)
-        for i, l in enumerate(self.outb_linears):
-            b_e = self.outb_linears[i](b_e)
-            b_e = F.relu(b_e)
-        b_result = self.outb_linears1(b_e)
-        b_result = F.sigmoid(b_result)
+        # out_rgb = torch.cat([r_result, g_result, b_result], -1)
+        out_rgb = torch.cat([r_e, g_e, b_e], -1)
+        # out_rgb = out_rgb ** (1. / 2.2)
 
-        out_rgb = torch.cat([r_result, g_result, b_result], -1)
 
         return out_rgb
 
