@@ -1,4 +1,4 @@
-expname = three5Exp16Vtest_0_3mlp_gama
+expname = three5Exp16Vtest1   #_0_3mlp_gama
 basedir = ./logs
 datadir = ./data/threeMix
 dataset_type = llff

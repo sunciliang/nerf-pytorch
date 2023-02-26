@@ -42,7 +42,7 @@
       <recent name="E:\GitHub\nerf-py" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.run_nerf">
+  <component name="RunManager" selected="Python.test">
     <configuration name="run_nerf" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="nerf-py" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -93,8 +93,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.run_nerf" />
         <item itemvalue="Python.test" />
+        <item itemvalue="Python.run_nerf" />
       </list>
     </recent_temporary>
   </component>
@@ -124,7 +124,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/test.py</url>
-          <line>143</line>
+          <line>146</line>
           <option name="timeStamp" value="150" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -134,12 +134,12 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/test.py</url>
-          <line>309</line>
+          <line>312</line>
           <option name="timeStamp" value="214" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/test.py</url>
-          <line>136</line>
+          <line>139</line>
           <option name="timeStamp" value="215" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -148,9 +148,14 @@
           <option name="timeStamp" value="244" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/load_llff.py</url>
+          <line>306</line>
+          <option name="timeStamp" value="268" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/run_nerf.py</url>
-          <line>226</line>
-          <option name="timeStamp" value="264" />
+          <line>802</line>
+          <option name="timeStamp" value="269" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>
