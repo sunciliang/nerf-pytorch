@@ -111,37 +111,43 @@ def convert_K_to_RGB(colour_temperature):
 
 
 import numpy as np
+# for i in range(16):
+#     key = np.random.randint(i*25, (i+1)*25)
+#     print(key)
 # tt = []
-# # # key = [5000,5000,5000,5000,5000]
-# # # key = [2.0,1.0,0.5,0.25,0.125]
-# key = [1.0,1.0,1.0,1.0,1.0]
-# for i in range(18):
+# # # # key = [5000,5000,5000,5000,5000]
+# # # # key = [2.0,1.0,0.5,0.25,0.125]
+# # key = [1.0,1.0,1.0,1.0,1.0]
+# key = [0,0,0,0,0]
+# for i in range(16):
 #     tt.append(key[i%5])
 # # np.save('temperature.npy',tt)
 # np.save('exposure.npy',tt)
-#
+# #
 ttt = []
-key=[2800,3500,4500,5600,7000]
-# # key=[2.0,1.0,0.5,0.25,0.125]
-# # key=[3000,3500,4000]
-# key=[0.5,0.125,0.25,1.0,2.0]
-# # tt=[2,2,3,2,1,2,2,2,2,2,
-# #     2,2,2,2,2,1,2,2,2,2,
-# #     3,2,2,2,2,2,1,2,2,2,
-# #     2,1,1,2,2,2,2,3,2]
-# tt = [1,1,1,1,1,1,2,2,2,1,
-#       1,1,1,1,5,1,1,1,1,1,
-#       5,1,5,1,2,1,1,1,1,1,
-#       1,5,1,1,1,1,1,1,1]
-tt = [1,3,5,4,3,2,1,4,
-      3,5,4,3,2,1,2,1,
-      5,4]
+# key=[2800,3500,4500,5600,7000]
+# # # key=[3000,3500,4000]
+key=[-2,-1,0,1,2]
+# key = [0, -3, -1.5, 1.5, 3]
+# tt = [3,3,4,3,2,4,5,4,
+#       4,2,1,4,5,2,4,4,
+#       4,4,2,4,2,4,3,4]
+# tt = [3,3,2,1,3,3,4,4,
+      # 5,1,2,2,4,3,3,3,
+      # 1,3,5,4,3,2,1,5,
+      # 5,3,4,3,3,5,5,3
+#       ]
+tt = [3,3,3,3,1,5,3,2,
+      3,4,2,3,4,4,1,5,
+      3,3,3,4,2,2,2,2,
+      4,3,3,4,5,3,3,1,
+      ]
 for i in tt:
     ttt.append(key[i-1])
-np.save('temperature.npy',ttt)
+# np.save('temperature.npy',ttt)
 # np.save('exposure.npy',ttt)
-# k=np.load(r'E:\GitHub\nerf-py\temperature.npy')
-# print(k)
+k=np.load(r'E:\GitHub\TensoISP\data\Character\temperature.npy')
+print(k)
 
 # path = glob.glob(r'E:\GitHub\nerf-py\data\colorboard18\RAW\*.dng')
 # for idx,img in enumerate(path):
