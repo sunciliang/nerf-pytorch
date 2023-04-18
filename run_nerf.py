@@ -417,6 +417,7 @@ def render_rays(ray_batch,
     rgb_map_s, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
     if not no_ISP:
         if start_isp >= 0:
+            print("strat isp")
             rgb_map = ISP_model(rgb_map_s,exposures,temperatures)
         else:
             rgb_map = rgb_map_s
