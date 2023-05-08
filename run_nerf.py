@@ -17,7 +17,8 @@ from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
 from load_blender import load_blender_data
 from load_LINEMOD import load_LINEMOD_data
-
+from skimage.metrics import structural_similarity as SSIM
+import lpips
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 np.random.seed(0)
@@ -222,6 +223,7 @@ def render_path(args, indices,render_poses, hwf, K, images,poses,chunk, render_k
                 render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
         print(i, time.time() - t)
         t = time.time()
+#################################################
         rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs_test)
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
@@ -257,6 +259,10 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
 
     rgbs = []
     disps = []
+    psnr_values = []
+    ssim_values = []
+    lpips_values = []
+    lpips_fn = lpips.LPIPS(net="vgg").eval()
 
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
@@ -268,7 +274,22 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
                     render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
         print(i, time.time() - t)
         t = time.time()
+        # rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs_test)
+
         rgb, disp, acc, _ = render(H, W, K, chunk=chunk, c2w=c2w[:3,:4], **render_kwargs_test)
+        if gt_imgs.all() != None:
+            psnr = float(mse2psnr(img2mse(rgb.cpu(),gt_imgs[i])))
+            # psnr = float(
+            #     math.mse_to_psnr(img2mse((rgb - gt_imgs) ** 2).mean()))
+            ssim = SSIM(rgb.cpu().numpy(),gt_imgs[i],multichannel=True)
+            # ssim = float(ssim_fn(rgb, gt_imgs))
+            lpips_score = lpips_fn(lpips.im2tensor(rgb.cpu().numpy()*255), lpips.im2tensor(gt_imgs[i]*255),normalize=True).item()
+
+            print(f'PSNR={psnr:.4f} SSIM={ssim:.4f} LPIPS={lpips_score:.4f}')
+            psnr_values.append(psnr)
+            ssim_values.append(ssim)
+            lpips_values.append(lpips_score)
+
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
         if i==0:
@@ -288,6 +309,12 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
 
     rgbs = np.stack(rgbs, 0)
     disps = np.stack(disps, 0)
+    averagepsnr = sum(psnr_values) / len(psnr_values)
+    averagessim = sum(ssim_values) / len(ssim_values)
+    averagelpips = sum(lpips_values) / len(lpips_values)
+    print("ave psnr:",averagepsnr,"ave ssim:",averagessim,"ave lpips",averagelpips)
+    with open(os.path.join(savedir,'res.txt'),'a+') as f:
+        f.write(f'psnr:{averagepsnr},ssim:{averagessim},lpips:{averagelpips}')
 
     return rgbs, disps
 
@@ -350,7 +377,11 @@ def create_nerf(args):
             model_fine.load_state_dict(ckpt['network_fine_state_dict'])
 
     ##########################
-    embedded_cam = torch.tensor((), device=device)
+    if len(ckpts) > 0:
+        weight = ckpt['embedded_cam_dict']
+        embedded_cam = nn.Embedding.from_pretrained(weight)
+    else:
+        embedded_cam = torch.tensor((), device=device)
     render_kwargs_train = {
         'network_query_fn' : network_query_fn,
         'embedded_cam': embedded_cam,
@@ -810,7 +841,7 @@ def train():
             os.makedirs(testsavedir, exist_ok=True)
             print('test poses shape', render_poses.shape)
 
-            rgbs, _ = render_path(render_poses, hwf, K, args.chunk, render_kwargs_test, gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
+            rgbs, _ = render_video(args, render_poses, hwf, K, args.chunk, render_kwargs_test, gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
             print('Done rendering', testsavedir)
             imageio.mimwrite(os.path.join(testsavedir, 'video.mp4'), to8b(rgbs), fps=30, quality=8)
 
@@ -968,6 +999,7 @@ def train():
                 'network_fn_state_dict': render_kwargs_train['network_fn'].state_dict(),
                 'network_fine_state_dict': render_kwargs_train['network_fine'].state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
+                'embedded_cam_dict': embedcam_fn.weight,
             }, path)
             print('Saved checkpoints at', path)
 
