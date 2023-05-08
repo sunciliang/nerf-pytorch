@@ -263,13 +263,13 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
     ssim_values = []
     lpips_values = []
     lpips_fn = lpips.LPIPS(net="vgg").eval()
-
+    embed = [1,7,15,1]
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
         with torch.no_grad():
             if args.input_ch_cam > 0:
                 if embedcam_fn is not None:
-                    render_kwargs_test["embedded_cam"] = embedcam_fn(torch.tensor(6, device=device)).reshape(1,1,4)
+                    render_kwargs_test["embedded_cam"] = embedcam_fn(torch.tensor(embed[i], device=device)).reshape(1,1,4)
                 else:
                     render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
         print(i, time.time() - t)
@@ -841,7 +841,7 @@ def train():
             os.makedirs(testsavedir, exist_ok=True)
             print('test poses shape', render_poses.shape)
 
-            rgbs, _ = render_video(args, render_poses, hwf, K, args.chunk, render_kwargs_test, gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
+            rgbs, _ = render_video(args, render_poses, hwf, K, args.chunk, render_kwargs_test,embedcam_fn=render_kwargs_test["embedded_cam"], gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
             print('Done rendering', testsavedir)
             imageio.mimwrite(os.path.join(testsavedir, 'video.mp4'), to8b(rgbs), fps=30, quality=8)
 
