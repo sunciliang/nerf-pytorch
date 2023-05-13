@@ -1,11 +1,11 @@
-expname = Coffee_L
+expname = Desk_L
 basedir = ./logs
-datadir = ./data/Coffee/mix
+datadir = ./data/desk
 dataset_type = llff
 
 no_batching = True
 
-factor = 1
+factor = 4
 llffhold = 8
 
 N_rand = 1024

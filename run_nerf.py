@@ -263,13 +263,17 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
     ssim_values = []
     lpips_values = []
     lpips_fn = lpips.LPIPS(net="vgg").eval()
-    embed = [1,7,15,1]
+    embed = [9,5,14,6,22]
+    # embedcam_fn = None
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
         with torch.no_grad():
             if args.input_ch_cam > 0:
                 if embedcam_fn is not None:
-                    render_kwargs_test["embedded_cam"] = embedcam_fn(torch.tensor(embed[i], device=device)).reshape(1,1,4)
+                    if embed[i] == -1:
+                        render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
+                    else:
+                        render_kwargs_test["embedded_cam"] = embedcam_fn(torch.tensor(embed[i], device=device)).reshape(1,1,4)
                 else:
                     render_kwargs_test["embedded_cam"] = torch.zeros((args.input_ch_cam), device=device).reshape(1,1,4)
         print(i, time.time() - t)
@@ -286,6 +290,8 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
             lpips_score = lpips_fn(lpips.im2tensor(rgb.cpu().numpy()*255), lpips.im2tensor(gt_imgs[i]*255),normalize=True).item()
 
             print(f'PSNR={psnr:.4f} SSIM={ssim:.4f} LPIPS={lpips_score:.4f}')
+            with open(os.path.join(savedir, 'res.txt'), 'a+') as f:
+                f.write(f'psnr:{psnr},ssim:{ssim},lpips:{lpips_score}\n')
             psnr_values.append(psnr)
             ssim_values.append(ssim)
             lpips_values.append(lpips_score)
@@ -314,7 +320,7 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
     averagelpips = sum(lpips_values) / len(lpips_values)
     print("ave psnr:",averagepsnr,"ave ssim:",averagessim,"ave lpips",averagelpips)
     with open(os.path.join(savedir,'res.txt'),'a+') as f:
-        f.write(f'psnr:{averagepsnr},ssim:{averagessim},lpips:{averagelpips}')
+        f.write(f'avepsnr:{averagepsnr},avessim:{averagessim},avelpips:{averagelpips}')
 
     return rgbs, disps
 
