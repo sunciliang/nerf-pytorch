@@ -315,7 +315,7 @@ def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=Fal
     bds = np.moveaxis(bds, -1, 0).astype(np.float32)
     # normalization temperature and exposure
     temperature = temperature.astype(np.float32) /10000
-    exposure = exposure.astype(np.float32)
+    exposure = (exposure.astype(np.float32)+3) / 6
 
     print('temperature', temperature.shape)
     print('exposure', exposure.shape)

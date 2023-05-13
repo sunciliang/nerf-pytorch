@@ -195,6 +195,10 @@ class ISP(nn.Module):
         self.k2wb_linears = nn.ModuleList(
             [nn.Linear(input_ch_temperatures, 32), nn.Linear(32, 32),
              nn.Linear(32, 3)])
+        self.e2exp_linears = nn.ModuleList(
+            [nn.Linear(input_ch_exposures, 32), nn.Linear(32, 32),
+             nn.Linear(32, 1)])
+
         self.outr_linears = nn.ModuleList([nn.Linear(1, W // 2), nn.Linear(W // 2, W // 2)])
         self.outg_linears = nn.ModuleList([nn.Linear(1, W // 2), nn.Linear(W // 2, W // 2)])
         self.outb_linears = nn.ModuleList([nn.Linear(1, W // 2), nn.Linear(W // 2, W // 2)])
@@ -215,12 +219,7 @@ class ISP(nn.Module):
                 temperatures = F.sigmoid(temperatures)*2
             else:
                 temperatures = F.relu(temperatures)
-        # temperatures = temperatures.clamp(0.01, 255)
-        #
-        # temperatures_r = temperatures[:, 0:1] / temperatures[:, 1:2]
-        # temperatures_g = temperatures[:, 1:2] / temperatures[:, 1:2]
-        # temperatures_b = temperatures[:, 2:3] / temperatures[:, 1:2]
-        # temperatures_rgb = torch.cat([temperatures_r, temperatures_g, temperatures_b], -1)
+
         temperatures_rgb = temperatures
 
         rgbs_wb = torch.mul(input_rgb,temperatures_rgb)
@@ -229,9 +228,20 @@ class ISP(nn.Module):
         g = g_source = rgbs_wb[:, 1:2]
         b = b_source = rgbs_wb[:, 2:3]
 
-        r_e = r + torch.log(input_exposures)
-        g_e = g + torch.log(input_exposures)
-        b_e = b + torch.log(input_exposures)
+        # e2exp
+        exposures = input_exposures
+        for i, l in enumerate(self.e2exp_linears):
+            exposures = self.e2exp_linears[i](exposures)
+            if i == 2:
+                exposures = F.sigmoid(exposures) * 1.5
+            else:
+                exposures = F.relu(exposures)
+
+        exposures_rgb = exposures
+
+        r_e = r + torch.log(exposures_rgb)
+        g_e = g + torch.log(exposures_rgb)
+        b_e = b + torch.log(exposures_rgb)
 
         for i, l in enumerate(self.outr_linears):
             r_e = self.outr_linears[i](r_e)
@@ -251,8 +261,8 @@ class ISP(nn.Module):
         b_result = self.outb_linears1(b_e)
         b_result = F.sigmoid(b_result)
 
-        # out_rgb = torch.cat([r_result, g_result, b_result], -1)
-        out_rgb = torch.cat([r_e, g_e, b_e], -1)
+        out_rgb = torch.cat([r_result, g_result, b_result], -1)
+        # out_rgb = torch.cat([r_e, g_e, b_e], -1)
         # out_rgb = out_rgb ** (1. / 2.2)
 
 
