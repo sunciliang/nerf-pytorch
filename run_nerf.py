@@ -161,12 +161,16 @@ def render_path(render_poses, render_temperatures, render_exposures,start_iter, 
     rgbs = []
     disps = []
     depths = []
+    ave_PSNR = []
+    ave_SSIM = []
 
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
         rgb, disp, acc, depth, _ = render(H, W, K, start_iter, no_ISP, chunk=chunk, temperatures=render_temperatures[i,:], exposures=render_exposures[i,:], c2w=c2w[:3,:4], **render_kwargs)
+        # img_loss = img2mse(rgb,gt_imgs[i])
+        # psnr = mse2psnr(img_loss)
 
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
@@ -174,21 +178,27 @@ def render_path(render_poses, render_temperatures, render_exposures,start_iter, 
         if i==0:
             print(rgb.shape, disp.shape,depth.shape)
 
-        """
+
         if gt_imgs is not None and render_factor==0:
             p = -10. * np.log10(np.mean(np.square(rgb.cpu().numpy() - gt_imgs[i])))
-            print(p)
-        """
+            ssim = rgb_ssim(rgb_map, gt_rgb, 1)
+            print('psrn:',p)
+            ave_PSNR.append(p)
+
 
         if savedir is not None:
             rgb8 = to8b(rgbs[-1])
+            gt8 = to8b(gt_imgs[i])
+            rgb_com = np.concatenate((rgb8, gt8), axis=1)
             filename = os.path.join(savedir, '{:03d}.png'.format(i))
-            imageio.imwrite(filename, rgb8)
+            imageio.imwrite(filename, rgb_com)
 
 
     rgbs = np.stack(rgbs, 0)
     disps = np.stack(disps, 0)
     depths = np.stack(depths, 0)
+    psnr_ave = np.mean(np.asarray(ave_PSNR))
+    print('ave_PSNR',psnr_ave)
 
     return rgbs, disps, depths
 
@@ -737,7 +747,10 @@ def train():
             os.makedirs(testsavedir, exist_ok=True)
             print('test poses shape', render_poses.shape)
 
-            rgbs, _ = render_path(render_poses, hwf, K, args.chunk, render_kwargs_test, gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
+            rgbs, _, _ = render_path(render_poses,render_temperatures,render_exposures,123, hwf, K, args.chunk,args.render_sc, render_kwargs_test, gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
+            # render_path(torch.Tensor(poses[i_test]).to(device), torch.Tensor(temperatures[i_test]).to(device),
+            #             torch.Tensor(exposures[i_test]).to(device), i, hwf, K, args.chunk, args.render_sc,
+            #             render_kwargs_test, gt_imgs=images[i_test], savedir=testsavedir)
             print('Done rendering', testsavedir)
             imageio.mimwrite(os.path.join(testsavedir, 'video.mp4'), to8b(rgbs), fps=30, quality=8)
 
