@@ -17,6 +17,8 @@ from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
 from load_blender import load_blender_data
 from load_LINEMOD import load_LINEMOD_data
+from skimage.metrics import structural_similarity as SSIM
+import lpips
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -163,6 +165,8 @@ def render_path(render_poses, render_temperatures, render_exposures,start_iter, 
     depths = []
     ave_PSNR = []
     ave_SSIM = []
+    ave_LPIPS = []
+    lppips_fn = lpips.LPIPS(net='vgg').eval()
 
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
@@ -181,9 +185,12 @@ def render_path(render_poses, render_temperatures, render_exposures,start_iter, 
 
         if gt_imgs is not None and render_factor==0:
             p = -10. * np.log10(np.mean(np.square(rgb.cpu().numpy() - gt_imgs[i])))
-            ssim = rgb_ssim(rgb_map, gt_rgb, 1)
-            print('psrn:',p)
+            ssim = SSIM(rgb.cpu().numpy(),gt_imgs[i],multichannel=True)
+            lpip_score = lppips_fn(lpips.im2tensor(rgb.cpu().numpy()*255),lpips.im2tensor(gt_imgs[i]*255),normalize=True).item()
+            print(f'PSNR={p:.4f} SSIM={ssim:.4f} Lpips={lpip_score:.4f}')
             ave_PSNR.append(p)
+            ave_SSIM.append(ssim)
+            ave_LPIPS.append(lpip_score)
 
 
         if savedir is not None:
@@ -198,7 +205,9 @@ def render_path(render_poses, render_temperatures, render_exposures,start_iter, 
     disps = np.stack(disps, 0)
     depths = np.stack(depths, 0)
     psnr_ave = np.mean(np.asarray(ave_PSNR))
-    print('ave_PSNR',psnr_ave)
+    ssim_ave = np.mean(np.asarray(ave_SSIM))
+    lpips_ave = np.mean(np.asarray(ave_LPIPS))
+    print(f'ave_PSNR={psnr_ave:.4f} ave_SSIM={ssim_ave:.4f} ave_Lpips={lpips_ave:.4f}')
 
     return rgbs, disps, depths
 
