@@ -208,6 +208,8 @@ def render_path(render_poses, render_temperatures, render_exposures,start_iter, 
     ssim_ave = np.mean(np.asarray(ave_SSIM))
     lpips_ave = np.mean(np.asarray(ave_LPIPS))
     print(f'ave_PSNR={psnr_ave:.4f} ave_SSIM={ssim_ave:.4f} ave_Lpips={lpips_ave:.4f}')
+    with open(os.path.join(savedir,'res.txt'),'a+') as f:
+        f.write(f'avepsnr:{psnr_ave},avessim:{ssim_ave},avelpips:{lpips_ave}')
 
     return rgbs, disps, depths
 
@@ -589,9 +591,9 @@ def config_parser():
                         help='frequency of tensorboard image logging')
     parser.add_argument("--i_weights", type=int, default=10000, 
                         help='frequency of weight ckpt saving')
-    parser.add_argument("--i_testset", type=int, default=50000, 
+    parser.add_argument("--i_testset", type=int, default=100000,
                         help='frequency of testset saving')
-    parser.add_argument("--i_video",   type=int, default=50000, 
+    parser.add_argument("--i_video",   type=int, default=100000,
                         help='frequency of render_poses video saving')
 
     parser.add_argument('--random_seed', type=int, default=1,

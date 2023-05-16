@@ -1,9 +1,9 @@
-expname = Character_ISP
+expname = Desk_ISP
 basedir = ./logs
-datadir = ./data/Character
+datadir = ./data/desk
 dataset_type = llff
 
-factor = 1
+factor = 4
 llffhold = 8
 
 N_rand = 1024
