@@ -23,29 +23,35 @@ import numpy as np
 # #
 ttt = []
 # key=[3200,5200,7000]
-# key=[1,3,7,15,31,51]
-key=[-2,0,2]
+key=[1,3,7,15,31,51]
+# key=[-2,0,2]
 # key = [0, -2.5, -1.5, 1.5, 2.5]
 
-tt = [2,3,2,2,2,2,2,2,1,2,
-      1,2,2,3,2,2,2,2,1,2,
-      2,2,1,2,2,2,3,2,3,2]
-# tt = [2,2,2,1,2,2,3,2,2,2,
+# tt = [2,2,3,2,2,2,2,2,1,2,
+#       1,2,2,3,2,2,2,2,1,2,
+#       2,2,1,2,2,2,3,2,3,2]
+# tt = [1,2,2,3,2,2,1,3,2,2,
 #       2,2,2,1,2,3,2,2,3,2,
 #       2,2,1,2,1,3,2,2,2,2]
+tt = [1,1,1,1,1,1,1,1,1,1,
+      1,1,1,1,1,1,1,1,1,1,
+      1,1,1,1,1,1,1,1,1,1,
+      3,4,3,2,2,3,4,3,2,5,
+      4,5,2,3,4,5,2,3,4,5,
+      2,3,4,5,2,3,4,5,2,3]
 
 for i in tt:
     ttt.append(key[i-1])
 # np.save('temperature.npy',ttt)
 # np.save('exposure.npy',ttt)
-# np.save('coc.npy',ttt)
-k=np.load(r'E:\GitHub\nerf-py\data\desk\exposure.npy')
+np.save('coc.npy',ttt)
+k=np.load(r'E:\GitHub\nerf-py\coc.npy')
 print(k)
 # k2 = np.zeros((k.shape[0]*2,k.shape[-1]))
 # k2 = np.hstack((k,k))
 # k2 = np.vstack((k,k)) #pose
 # print(k[38],k[77])
-# np.save('poses_bounds.npy',k2)
+# np.save('temperature.npy',k2)
 # print(k2)
 # print(k2[0],k2[16])
 # path = glob.glob(r'E:\GitHub\nerf-py\data\colorboard18\RAW\*.dng')
