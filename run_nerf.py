@@ -263,7 +263,7 @@ def render_video(args, render_poses, hwf, K,chunk, render_kwargs_test, embedcam_
     ssim_values = []
     lpips_values = []
     lpips_fn = lpips.LPIPS(net="vgg").eval()
-    embed = [9,5,14,6,22]
+    embed = [26,33,40,47,1,8,15,22]
     # embedcam_fn = None
     t = time.time()
     for i, c2w in enumerate(tqdm(render_poses)):
@@ -683,9 +683,9 @@ def config_parser():
                         help='frequency of tensorboard image logging')
     parser.add_argument("--i_weights", type=int, default=10000, 
                         help='frequency of weight ckpt saving')
-    parser.add_argument("--i_testset", type=int, default=50000, 
+    parser.add_argument("--i_testset", type=int, default=100000,
                         help='frequency of testset saving')
-    parser.add_argument("--i_video",   type=int, default=50000, 
+    parser.add_argument("--i_video",   type=int, default=100000,
                         help='frequency of render_poses video saving')
 
     parser.add_argument("--input_ch_cam", type=int, default=4,

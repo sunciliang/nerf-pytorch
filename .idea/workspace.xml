@@ -18,6 +18,7 @@
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/configs/luckycat.txt" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/load_llff.py" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/run_nerf.py" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/run_nerf_helpers.py" root0="FORCE_HIGHLIGHTING" />
@@ -222,6 +223,11 @@
           <url>file://$PROJECT_DIR$/run_nerf.py</url>
           <line>283</line>
           <option name="timeStamp" value="311" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/run_nerf.py</url>
+          <line>260</line>
+          <option name="timeStamp" value="326" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

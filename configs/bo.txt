@@ -1,6 +1,6 @@
-expname = Medicine_L
+expname = dolls_L
 basedir = ./logs
-datadir = ./data/Medicine/mix31
+datadir = ./data/dolls/mix31
 dataset_type = llff
 
 no_batching = True
@@ -15,7 +15,6 @@ N_importance = 64
 use_viewdirs = True
 raw_noise_std = 1e0
 
-render_only = 1
+render_only = 0
 render_test = 1
-
 
